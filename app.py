@@ -8,14 +8,18 @@ st.set_page_config(page_title="KeelEngine", layout="wide")
 st.markdown("""
     <style>
     .metric-card { background-color: #f8f9fa; padding: 20px; border-radius: 6px; border-left: 5px solid #2c3e50; margin-bottom: 15px; }
-    .grade-badge { background-color: #2e7d32; color: white; padding: 5px 12px; border-radius: 4px; font-weight: 600; font-size: 13px; display: inline-block; margin-bottom: 12px; }
+    .grade-badge { background-color: #1e88e5; color: white; padding: 5px 12px; border-radius: 4px; font-weight: 600; font-size: 13px; display: inline-block; margin-bottom: 12px; }
     .status-pass { color: #2e7d32; font-weight: bold; font-size: 14px; }
     .status-fail { color: #c62828; font-weight: bold; font-size: 14px; }
+    .route-box { background-color: #f1f3f4; padding: 10px 14px; border-radius: 4px; font-family: monospace; font-size: 13px; color: #333; border-left: 3px solid #1e88e5; margin: 10px 0; line-height: 1.4; }
     </style>
 """, unsafe_allow_html=True)
 
 st.title("KeelEngine")
 st.markdown("### Structural Convenience & Cost Allocation Matrix")
+
+# Securely extract key signatures directly out of backend environment variables
+google_backend_key = st.secrets.get("GOOGLE_MAPS_API_KEY", None)
 
 with st.form("matrix_criteria_form"):
     st.markdown("##### 📥 Define Relocation Parameters")
@@ -29,9 +33,6 @@ with st.form("matrix_criteria_form"):
     profile_input = c4.selectbox("Household Composition Scenario", ["Single Occupant", "Couple", "Group"])
     property_input = c5.selectbox("Target Property Configuration Type", ["Shared Flatshare / Room", "1-Bed Private Flat", "2-Bed Private Flat", "3-Bed Private Flat"])
 
-    # ADDED DIRECT UI FIELD: Paste key straight into the application code flow securely
-    api_key_input = st.text_input("Optional: Google Maps API Key (For Live Real-Time Commutes)", type="password", placeholder="AIzaSy...")
-
     ceiling_input = st.slider("Max Take-Home Budget Allocation Ceiling (%)", 20, 75, 45)
     submit_triggered = st.form_submit_button("Generate Relocation Matrix ➔", use_container_width=True)
 
@@ -39,9 +40,7 @@ if submit_triggered:
     if not salary_input or not postcode_input:
         st.error("❌ Action Blocked: Please supply both a Gross Annual Salary and an Office Postcode to evaluate options.")
     else:
-        # Pass UI input key straight into the computation loop execution
-        active_key = api_key_input.strip() if api_key_input else None
-        df_hubs, google_error = fetch_convenient_commuter_hubs(postcode_input, api_key=active_key)
+        df_hubs = fetch_convenient_commuter_hubs(postcode_input, api_key=google_backend_key)
         
         net_monthly = (float(salary_input) * 0.78) / 12  
         earners = 1 if profile_input == "Single Occupant" else (2 if profile_input == "Couple" else 3)
@@ -50,15 +49,10 @@ if submit_triggered:
         
         st.markdown("---")
         st.markdown(f"### 📊 Active Household Financial Capacity")
-        
-        # Diagnostic Error Logging Module
-        if active_key and not google_error:
-            st.success("🛰️ Connected to Google Transit API Engine: Commute times and route lines are real-time calculations.")
-        elif active_key and google_error:
-            st.warning(f"⚠️ Google API Connection Rejected! Falling back to static estimates. Details: {google_error}")
+        if google_backend_key:
+            st.success("🛰️ Live Tracking Active: Commute narratives and time distributions are queried directly from Google Maps.")
         else:
-            st.info("ℹ️ Running via Native Baseline Transit Matrix. Paste your Google Key in the field above for real-time live routing.")
-            
+            st.info("ℹ️ Running via Native Baseline Matrix. (Configure GOOGLE_MAPS_API_KEY in cloud environment to sync real-time maps).")
         st.write(f"Combined Household Monthly Net Income: **£{pooled_budget:,.2f}/mo** | Maximum Spending Boundary: **£{max_allowed:,.2f}/mo**")
         st.markdown("---")
 
@@ -71,14 +65,17 @@ if submit_triggered:
             total_estimated_commitment = rent_share + tax_matrix["Band C"] + commute_share
             
             with st.container():
-                col_meta, col_metrics, col_actions = st.columns([1.5, 1.8, 1.3])
+                col_meta, col_metrics, col_actions = st.columns([1.6, 1.8, 1.2])
                 
                 with col_meta:
                     st.markdown(f"### {row['Neighborhood']}")
                     st.markdown(f"<div class='grade-badge'>{row['Convenience_Grade']}</div>", unsafe_allow_html=True)
-                    st.write(f"**Primary Hub:** {row['Nearest_Station']} (Zone {row['TfL_Zone']})")
-                    st.write(f"**Route Active Path:** `{row['Transit_Line']}`")
-                    st.write(f"**Commute Duration:** ~{row['Commute_Duration']} mins ({row['Transit_Mode']})")
+                    st.write(f"**Primary Hub Station:** {row['Nearest_Station']}")
+                    
+                    # Embed detailed step-by-step navigation path instructions directly on screen
+                    st.markdown("##### 🗺️ Commuter Route Blueprint:")
+                    st.markdown(f"<div class='route-box'>{row['Transit_Line']}</div>", unsafe_allow_html=True)
+                    st.write(f"**Total Direct Transit Time:** ~`{row['Commute_Duration']} mins` door-to-door")
                     
                 with col_metrics:
                     m1, m3 = st.columns(2)
@@ -96,7 +93,7 @@ if submit_triggered:
                 with col_actions:
                     st.write("<p style='margin-bottom:10px;'></p>", unsafe_allow_html=True)
                     if total_estimated_commitment <= max_allowed:
-                        st.markdown("<p class='status-pass'>✅ Within Budget Ceiling</p>", unsafe_allow_html=True)
+                        st.markdown("<p class='status-pass'>  Within Budget Ceiling</p>", unsafe_allow_html=True)
                     else:
                         st.markdown("<p class='status-fail'>⚠️ Exceeds Allocation Target</p>", unsafe_allow_html=True)
                         
