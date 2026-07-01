@@ -1,7 +1,6 @@
 import streamlit as st
 import pandas as pd
 import urllib.parse
-import requests
 from data_models import fetch_convenient_commuter_hubs, generate_all_monthly_bands, get_council_tax_explanation
 
 st.set_page_config(page_title="KeelEngine", layout="wide")
@@ -15,45 +14,35 @@ st.markdown("""
     </style>
 """, unsafe_allow_html=True)
 
-def resolve_office_outcode(postcode_string):
-    clean = postcode_string.replace(" ", "").upper()
-    if len(clean) >= 5:
-        return clean[:-3]
-    try:
-        res = requests.get(f"https://api.postcodes.io/postcodes/{clean}", timeout=3).json()["result"]
-        return res["outcode"].upper()
-    except:
-        return clean
-
 st.title("KeelEngine")
 st.markdown("### Structural Convenience & Cost Allocation Matrix")
 
-# Wrap inputs into a Form element to block continuous re-runs during user input entry
 with st.form("matrix_criteria_form"):
     st.markdown("##### 📥 Define Relocation Parameters")
     
     c1, c2, c3 = st.columns(3)
     salary_input = c1.text_input("Gross Annual Salary (£)", placeholder="e.g. 45000")
-    postcode_input = c2.text_input("Office Postcode (Full or Outcode)", placeholder="e.g. EC2M 2PA")
+    postcode_input = c2.text_input("Office Postcode (Full Target Recommended)", placeholder="e.g. EC2M 2PA")
     days_input = c3.slider("Required Weekly Office Days", 1, 5, 3)
 
     c4, c5 = st.columns(2)
     profile_input = c4.selectbox("Household Composition Scenario", ["Single Occupant", "Couple", "Group"])
     property_input = c5.selectbox("Target Property Configuration Type", ["Shared Flatshare / Room", "1-Bed Private Flat", "2-Bed Private Flat", "3-Bed Private Flat"])
 
+    # ADDED DIRECT UI FIELD: Paste key straight into the application code flow securely
+    api_key_input = st.text_input("Optional: Google Maps API Key (For Live Real-Time Commutes)", type="password", placeholder="AIzaSy...")
+
     ceiling_input = st.slider("Max Take-Home Budget Allocation Ceiling (%)", 20, 75, 45)
-    
-    # Explicit user submission action target
     submit_triggered = st.form_submit_button("Generate Relocation Matrix ➔", use_container_width=True)
 
 if submit_triggered:
     if not salary_input or not postcode_input:
         st.error("❌ Action Blocked: Please supply both a Gross Annual Salary and an Office Postcode to evaluate options.")
     else:
-        office_outcode = resolve_office_outcode(postcode_input)
-        df_hubs = fetch_convenient_commuter_hubs(office_outcode)
+        # Pass UI input key straight into the computation loop execution
+        active_key = api_key_input.strip() if api_key_input else None
+        df_hubs, google_error = fetch_convenient_commuter_hubs(postcode_input, api_key=active_key)
         
-        # Financial Deductions Layer
         net_monthly = (float(salary_input) * 0.78) / 12  
         earners = 1 if profile_input == "Single Occupant" else (2 if profile_input == "Couple" else 3)
         pooled_budget = net_monthly * earners
@@ -61,6 +50,15 @@ if submit_triggered:
         
         st.markdown("---")
         st.markdown(f"### 📊 Active Household Financial Capacity")
+        
+        # Diagnostic Error Logging Module
+        if active_key and not google_error:
+            st.success("🛰️ Connected to Google Transit API Engine: Commute times and route lines are real-time calculations.")
+        elif active_key and google_error:
+            st.warning(f"⚠️ Google API Connection Rejected! Falling back to static estimates. Details: {google_error}")
+        else:
+            st.info("ℹ️ Running via Native Baseline Transit Matrix. Paste your Google Key in the field above for real-time live routing.")
+            
         st.write(f"Combined Household Monthly Net Income: **£{pooled_budget:,.2f}/mo** | Maximum Spending Boundary: **£{max_allowed:,.2f}/mo**")
         st.markdown("---")
 
@@ -70,8 +68,6 @@ if submit_triggered:
             
             is_single = (profile_input == "Single Occupant")
             tax_matrix = generate_all_monthly_bands(row["Borough"], single_occupant=is_single, earners=earners)
-            
-            # Benchmark baseline evaluates against local Band C tier
             total_estimated_commitment = rent_share + tax_matrix["Band C"] + commute_share
             
             with st.container():
@@ -81,18 +77,16 @@ if submit_triggered:
                     st.markdown(f"### {row['Neighborhood']}")
                     st.markdown(f"<div class='grade-badge'>{row['Convenience_Grade']}</div>", unsafe_allow_html=True)
                     st.write(f"**Primary Hub:** {row['Nearest_Station']} (Zone {row['TfL_Zone']})")
-                    st.write(f"**Transit Corridor:** {row['Transit_Mode']}")
-                    st.write(f"**Journey Duration:** ~{row['Commute_Duration']} mins platform-to-platform")
+                    st.write(f"**Route Active Path:** `{row['Transit_Line']}`")
+                    st.write(f"**Commute Duration:** ~{row['Commute_Duration']} mins ({row['Transit_Mode']})")
                     
                 with col_metrics:
                     m1, m3 = st.columns(2)
                     m1.metric("Rent Share", f"£{rent_share:,.0f}", help="Individual share of estimated structural rent.")
-                    m3.metric("Commute Cost", f"£{commute_share:,.0f}", help=f"Pipeline route: {row['Transit_Line']}")
+                    m3.metric("Commute Cost", f"£{commute_share:,.0f}", help="Expected travel expenditure over monthly cycle.")
                     
-                    # Direct multi-band dashboard spectrum
                     with st.expander("📊 View Local Council Tax Spectrum (A-H Share)", expanded=False):
                         st.caption(get_council_tax_explanation())
-                        
                         if property_input == "Shared Flatshare / Room":
                             st.info("Professional house shares typically bundle Council Tax directly into flat-rate utility contributions.")
                         else:
@@ -101,15 +95,12 @@ if submit_triggered:
                             
                 with col_actions:
                     st.write("<p style='margin-bottom:10px;'></p>", unsafe_allow_html=True)
-                    
-                    # Budget Check Indicator
                     if total_estimated_commitment <= max_allowed:
                         st.markdown("<p class='status-pass'>✅ Within Budget Ceiling</p>", unsafe_allow_html=True)
                     else:
                         st.markdown("<p class='status-fail'>⚠️ Exceeds Allocation Target</p>", unsafe_allow_html=True)
                         
                     outcode_target = row['Station_Outcode']
-                    
                     if property_input == "Shared Flatshare / Room":
                         spareroom_url = f"https://www.spareroom.co.uk/flatshare/search.pl?mode=list&action=search&query={outcode_target}&max_per_month={int(rent_share * 1.15)}"
                         st.link_button(f"Search Rooms in {outcode_target} ➔", spareroom_url, use_container_width=True)
