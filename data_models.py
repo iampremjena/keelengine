@@ -115,9 +115,17 @@ def fetch_convenient_commuter_hubs(office_outcode):
                 transit_mode = "Direct Overground Line"
                 cost_weight = 2.50
                 
+        rent_multiplier = meta["Rent_Base"]
+        rent_tiers = {
+            "Shared Flatshare / Room": rent_multiplier,
+            "1-Bed Private Flat": rent_multiplier * 1.85,
+            "2-Bed Private Flat": rent_multiplier * 2.40,
+            "3-Bed Private Flat": rent_multiplier * 3.10
+        }
+        
         processed_hubs.append({
             "Neighborhood": meta["Place"], "Borough": meta["Borough"], "TfL_Zone": meta["Zone"],
-            "Rent_Tiers": meta["Rent_Tiers"], "Station_Outcode": outcode, "Nearest_Station": meta["Station"],
+            "Rent_Tiers": rent_tiers, "Station_Outcode": outcode, "Nearest_Station": meta["Station"],
             "Transit_Line": meta["Line"], "Commute_Duration": transit_time,
             "Convenience_Score": score, "Convenience_Grade": grade, "Transit_Mode": transit_mode, "Single_Fare_Cost": cost_weight
         })
