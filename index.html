@@ -16,85 +16,103 @@
         .leaflet-container { background: #0f172a !important; filter: invert(100%) hue-rotate(180deg) saturate(80%) brightness(80%); border-radius: 12px; }
         .no-scrollbar::-webkit-scrollbar { display: none; }
         .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+        
+        /* Slider Styling */
+        input[type=range]::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            height: 20px; width: 20px; border-radius: 50%; background: #10b981; cursor: pointer; margin-top: -6px; box-shadow: 0 0 10px rgba(16, 185, 129, 0.5);
+        }
+        input[type=range]::-webkit-slider-runnable-track {
+            width: 100%; height: 8px; cursor: pointer; background: #1e293b; border-radius: 4px;
+        }
     </style>
 </head>
 <body class="text-slate-100 min-h-screen antialiased selection:bg-emerald-500 selection:text-white">
 
-    <!-- AUTHENTICATION MODAL -->
-    <div id="authModal" class="fixed inset-0 z-[100] bg-slate-950/80 backdrop-blur-md flex items-center justify-center p-4">
-        <div class="glass p-10 rounded-3xl max-w-md w-full shadow-2xl text-center border border-emerald-500/30">
-            <h2 class="text-3xl font-black text-white mb-2 tracking-tight">KeelEngine</h2>
-            <p class="text-slate-400 text-sm mb-8">Sign in to save your favorite neighborhoods and personalize your routing.</p>
-            <div class="space-y-4">
-                <button onclick="handleAuth(true)" class="w-full bg-emerald-600 hover:bg-emerald-500 text-white font-bold py-4 rounded-xl shadow-lg transition">Sign In / Create Account</button>
-                <button onclick="handleAuth(false)" class="w-full bg-slate-800 hover:bg-slate-700 border border-slate-600 text-white font-bold py-4 rounded-xl transition">Continue as Guest</button>
-            </div>
-            <p class="text-xs text-slate-500 mt-6">By continuing, you agree to our <a href="#" class="text-emerald-400 hover:underline">Terms</a> & <a href="#" class="text-emerald-400 hover:underline">Privacy Policy</a>.</p>
+    <!-- ================= AUTHENTICATION PAGE ================= -->
+    <div id="authPage" class="min-h-screen flex items-center justify-center p-4 relative z-50">
+        <div class="glass p-12 rounded-3xl max-w-lg w-full shadow-2xl text-center border border-emerald-500/30">
+            <h2 class="text-4xl font-black text-white mb-2 tracking-tight">KeelEngine</h2>
+            <p class="text-slate-400 text-sm mb-8">Sign in to save properties and personalize routes.</p>
+            
+            <form id="authForm" class="space-y-5 text-left mb-8">
+                <div>
+                    <label class="block text-sm font-medium text-slate-300 mb-2">Email Address</label>
+                    <input type="email" id="authEmail" required class="w-full bg-slate-900/50 border border-slate-700/50 rounded-xl px-4 py-3 text-white focus:border-emerald-500">
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-slate-300 mb-2">Password</label>
+                    <input type="password" id="authPassword" required class="w-full bg-slate-900/50 border border-slate-700/50 rounded-xl px-4 py-3 text-white focus:border-emerald-500">
+                </div>
+                <div class="flex gap-4 pt-4">
+                    <button type="button" onclick="handleAuth('login')" class="w-1/2 bg-emerald-600 hover:bg-emerald-500 text-white font-bold py-3 rounded-xl shadow-lg transition">Log In</button>
+                    <button type="button" onclick="handleAuth('signup')" class="w-1/2 bg-slate-800 hover:bg-slate-700 border border-slate-600 text-white font-bold py-3 rounded-xl transition">Sign Up</button>
+                </div>
+            </form>
+            
+            <hr class="border-slate-700/50 mb-6">
+            <button onclick="toggleAppView(true, false)" class="text-emerald-400 hover:text-emerald-300 text-sm font-bold transition">Continue as Guest →</button>
         </div>
     </div>
 
-    <div class="max-w-7xl mx-auto px-4 py-8">
+    <!-- ================= MAIN APP PAGE ================= -->
+    <div id="appPage" class="hidden max-w-7xl mx-auto px-4 py-8">
+        
         <!-- TOP NAVIGATION -->
-        <nav class="glass rounded-3xl px-8 py-5 mb-10 flex flex-col sm:flex-row justify-between items-center gap-4 shadow-2xl shadow-emerald-900/10 z-50 relative">
-            <a href="#" onclick="switchTab('home'); return false;" class="flex items-center gap-2 group transition cursor-pointer">
-                <span class="text-3xl font-black tracking-tight text-white group-hover:text-emerald-400 transition-colors">KeelEngine</span>
-            </a>
+        <nav class="glass rounded-3xl px-8 py-5 mb-10 flex flex-col sm:flex-row justify-between items-center gap-4 shadow-2xl z-50 relative">
+            <a href="#" onclick="switchTab('home'); return false;" class="text-3xl font-black tracking-tight text-white hover:text-emerald-400 transition-colors">KeelEngine</a>
             <div class="flex flex-wrap justify-center items-center gap-6 text-sm font-semibold text-slate-400">
                 <button onclick="switchTab('home')" class="text-emerald-400 hover:text-white transition" id="tab-home">Dashboard</button>
                 <button onclick="switchTab('survey')" class="hover:text-white transition" id="tab-survey">Community Hub</button>
-                <button onclick="switchTab('help')" class="hover:text-white transition" id="tab-help">FAQ</button>
-                <button onclick="switchTab('profile')" class="hover:text-white transition hidden" id="tab-profile">My Profile</button>
-                <button onclick="switchTab('dev')" class="hover:text-white transition" id="tab-dev">Developer</button>
-                <span id="navUserStatus" class="bg-slate-800 text-slate-300 px-3 py-1.5 rounded-lg text-xs font-mono">Guest</span>
+                
+                <!-- Profile / Auth Toggle -->
+                <div class="relative group cursor-pointer" onclick="handleProfileClick()">
+                    <span id="navUserStatus" class="bg-slate-800 text-slate-300 px-4 py-2 rounded-lg text-xs font-mono hover:bg-slate-700 transition">Guest - Click to Sign in</span>
+                </div>
             </div>
         </nav>
 
-        <!-- PROFILE SECURE TAB -->
-        <div id="profileTab" class="hidden glass p-10 rounded-3xl mb-8 max-w-2xl mx-auto shadow-2xl border border-emerald-900/50">
-            <h2 class="text-3xl font-bold text-white mb-2">My Profile</h2>
-            <p class="text-slate-400 mb-8 text-sm">Securely manage your data. We strictly follow GDPR compliance and never share sensitive contact information.</p>
+        <!-- PROFILE DASHBOARD HUB -->
+        <div id="profileTab" class="hidden glass p-10 rounded-3xl mb-8 max-w-4xl mx-auto shadow-2xl border border-emerald-900/50">
+            <div class="flex justify-between items-center mb-8 border-b border-slate-700 pb-4">
+                <h2 class="text-3xl font-bold text-white">My Account</h2>
+                <button onclick="signOut()" class="bg-red-500/20 text-red-400 hover:bg-red-500/30 px-4 py-2 rounded-lg text-sm font-bold transition">Sign Out</button>
+            </div>
             
-            <div class="space-y-6">
-                <div>
-                    <label class="block text-sm font-medium text-slate-300 mb-2">Upload Profile Picture</label>
-                    <input type="file" class="text-sm text-slate-400 file:mr-4 file:py-2 file:px-4 file:rounded-xl file:border-0 file:text-sm file:font-semibold file:bg-emerald-500/20 file:text-emerald-400 hover:file:bg-emerald-500/30 transition">
-                </div>
-                <div>
-                    <label class="block text-sm font-medium text-slate-300 mb-2">Mobile Number (For OTP Verification)</label>
-                    <div class="flex gap-2">
-                        <input type="tel" placeholder="+44 7000 000000" class="w-full bg-slate-900/50 border border-slate-700/50 rounded-xl px-4 py-3 text-white focus:border-emerald-500">
-                        <button onclick="alert('OTP sent to your mobile device.')" class="bg-blue-600 hover:bg-blue-500 text-white font-bold px-6 rounded-xl transition">Send OTP</button>
+            <div class="flex gap-4 mb-8">
+                <button onclick="switchProfileSubTab('basic')" id="ptab-basic" class="px-4 py-2 rounded-lg text-sm font-bold bg-emerald-600 text-white">Basic Details</button>
+                <button onclick="switchProfileSubTab('saved')" id="ptab-saved" class="px-4 py-2 rounded-lg text-sm font-bold bg-slate-800 text-slate-400 hover:text-white">Saved Properties</button>
+                <button onclick="switchProfileSubTab('passwords')" id="ptab-passwords" class="px-4 py-2 rounded-lg text-sm font-bold bg-slate-800 text-slate-400 hover:text-white">Security</button>
+            </div>
+
+            <!-- SubTab: Basic -->
+            <div id="psub-basic" class="space-y-6">
+                <div class="grid grid-cols-2 gap-6">
+                    <div>
+                        <label class="block text-sm font-medium text-slate-300 mb-2">Company Name</label>
+                        <input type="text" id="profCompany" placeholder="e.g. Goldman Sachs" class="w-full bg-slate-900/50 border border-slate-700/50 rounded-xl px-4 py-3 text-white">
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium text-slate-300 mb-2">Favorite Area</label>
+                        <input type="text" id="profArea" placeholder="e.g. Islington" class="w-full bg-slate-900/50 border border-slate-700/50 rounded-xl px-4 py-3 text-white">
                     </div>
                 </div>
+                <button onclick="saveProfileDetails()" class="bg-emerald-600 hover:bg-emerald-500 text-white font-bold px-6 py-3 rounded-xl transition">Save Changes</button>
+            </div>
+
+            <!-- SubTab: Saved -->
+            <div id="psub-saved" class="hidden text-center py-10">
+                <p class="text-slate-400 text-sm">Your saved neighborhood recommendations will appear here.</p>
+            </div>
+
+            <!-- SubTab: Security -->
+            <div id="psub-passwords" class="hidden space-y-6">
                 <div>
-                    <label class="block text-sm font-medium text-slate-300 mb-2">Favorite Neighborhood</label>
-                    <input type="text" placeholder="e.g. Islington" class="w-full bg-slate-900/50 border border-slate-700/50 rounded-xl px-4 py-3 text-white focus:border-emerald-500">
+                    <label class="block text-sm font-medium text-slate-300 mb-2">New Password</label>
+                    <input type="password" class="w-full bg-slate-900/50 border border-slate-700/50 rounded-xl px-4 py-3 text-white max-w-md">
                 </div>
+                <button class="bg-blue-600 hover:bg-blue-500 text-white font-bold px-6 py-3 rounded-xl transition">Update Password</button>
             </div>
-        </div>
-
-        <!-- COMMUNITY HUB -->
-        <div id="surveyTab" class="hidden glass p-10 rounded-3xl mb-8 max-w-2xl mx-auto text-center">
-            <h2 class="text-3xl font-bold text-white mb-2">Community Hub</h2>
-            <input type="email" id="surveyEmail" placeholder="Your Email" class="w-full bg-slate-900/50 border border-slate-700/50 rounded-xl px-5 py-4 text-white mb-4">
-            <textarea id="surveyMessage" placeholder="Feedback?" rows="3" class="w-full bg-slate-900/50 border border-slate-700/50 rounded-xl px-5 py-4 text-white mb-4"></textarea>
-            <button onclick="alert('Feedback sent securely!')" class="w-full bg-emerald-600 text-white font-bold py-4 rounded-xl">Share Feedback</button>
-        </div>
-
-        <!-- FAQs -->
-        <div id="helpTab" class="hidden glass p-10 rounded-3xl mb-8 max-w-4xl mx-auto space-y-6">
-            <h2 class="text-3xl font-bold text-white mb-6 border-b border-slate-700 pb-4">Frequently Asked Questions</h2>
-            <div class="grid grid-cols-1 md:grid-cols-2 gap-8">
-                <div><h4 class="font-bold text-emerald-400 mb-1">1. How is the Suggestion Score calculated?</h4><p class="text-sm text-slate-300">It penalizes heavy commute times (1.5x) and expensive fares (4.5x). Faster, cheaper routes score highest.</p></div>
-                <div><h4 class="font-bold text-emerald-400 mb-1">2. What does "Door-to-Door" mean?</h4><p class="text-sm text-slate-300">We calculate full exact physical postcode distances and add a 12-15 minute flat buffer to account for walking to the specific transit line platform.</p></div>
-                <!-- Cut brevity for space but all FAQs load perfectly here -->
-            </div>
-        </div>
-
-        <div id="devTab" class="hidden glass p-10 rounded-3xl mb-8 max-w-2xl mx-auto text-center shadow-2xl">
-            <h2 class="text-3xl font-bold text-white mb-1">Prem Jena</h2>
-            <p class="text-emerald-400 font-medium mb-6">Lead Product Developer & Architect</p>
-            <a href="https://linkedin.com/in/iampremjena" target="_blank" class="bg-slate-800 text-white font-bold py-3 px-8 rounded-2xl">LinkedIn</a>
         </div>
 
         <!-- HOME DASHBOARD -->
@@ -103,51 +121,73 @@
                 
                 <!-- STICKY INPUT FORM -->
                 <div class="lg:col-span-4 sticky top-8 h-[calc(100vh-4rem)] overflow-y-auto no-scrollbar pb-10">
-                    <div class="glass p-8 rounded-3xl shadow-2xl relative overflow-hidden border border-emerald-900/30">
-                        <form id="matrixForm" class="space-y-6">
+                    <div class="glass p-8 rounded-3xl shadow-2xl border border-emerald-900/30">
+                        <form id="matrixForm" class="space-y-8">
+                            
+                            <!-- Move Type -->
                             <div>
-                                <label class="block text-sm font-medium text-slate-300 mb-2">Annual Gross Salary ⓘ</label>
-                                <div class="relative">
-                                    <span class="absolute left-4 top-3 text-slate-400 font-bold">£</span>
-                                    <input type="number" id="grossSalary" value="50000" step="1000" class="w-full bg-slate-900/50 border border-slate-700/50 rounded-2xl pl-8 pr-4 py-3 font-mono text-white focus:outline-none focus:border-emerald-500" oninput="updateMath()">
-                                </div>
-                                <p class="text-xs text-emerald-400 mt-2 font-mono bg-emerald-950/30 p-2 rounded-lg">Net Take-Home: <strong id="netMonthlyOut">£3,100</strong> / mo</p>
+                                <label class="block text-sm font-medium text-slate-300 mb-2">Who is moving?</label>
+                                <select id="moveType" onchange="toggleCouple()" class="w-full bg-slate-900 border border-slate-700 rounded-2xl px-4 py-3 text-white outline-none">
+                                    <option value="solo">Just Myself</option>
+                                    <option value="couple">As a Couple</option>
+                                </select>
                             </div>
 
+                            <!-- Salary Inputs -->
+                            <div class="space-y-6">
+                                <div>
+                                    <div class="flex justify-between items-end mb-2">
+                                        <label class="block text-sm font-medium text-slate-300">Your Gross Salary</label>
+                                        <span class="text-xl font-bold text-emerald-400">£<span id="salaryOut">50,000</span></span>
+                                    </div>
+                                    <input type="range" id="grossSalary" min="10000" max="200000" step="1000" value="50000" class="w-full" oninput="updateMath()">
+                                </div>
+                                
+                                <div id="partnerSection" class="hidden border-t border-slate-700 pt-4">
+                                    <div class="flex justify-between items-end mb-2">
+                                        <label class="block text-sm font-medium text-slate-300">Partner's Salary</label>
+                                        <span class="text-xl font-bold text-emerald-400">£<span id="partnerSalaryOut">50,000</span></span>
+                                    </div>
+                                    <input type="range" id="partnerSalary" min="10000" max="200000" step="1000" value="50000" class="w-full" oninput="updateMath()">
+                                    
+                                    <div class="mt-4">
+                                        <label class="block text-xs font-medium text-slate-400 mb-2">How are you splitting the budget?</label>
+                                        <div class="flex items-center gap-4">
+                                            <span class="text-xs text-slate-500">You: <span id="splitYou">50</span>%</span>
+                                            <input type="range" id="splitSlider" min="0" max="100" step="5" value="50" class="w-full" oninput="updateMath()">
+                                            <span class="text-xs text-slate-500">Partner: <span id="splitPartner">50</span>%</span>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <p id="easterEgg" class="hidden text-xs text-amber-400 font-bold bg-amber-950/30 p-3 rounded-lg border border-amber-900/50 text-center">
+                                    🥂 You can buy whatever you like, this tool isn't for you ;)
+                                </p>
+                            </div>
+
+                            <!-- Budget Slider -->
                             <div>
                                 <div class="flex justify-between items-center mb-2">
-                                    <label class="text-sm font-medium text-slate-300">Rent & Commute Split</label>
+                                    <label class="text-sm font-medium text-slate-300">Max Rent Allocation</label>
                                     <span class="text-lg font-bold text-white"><span id="budgetPercentOut">40</span>%</span>
                                 </div>
-                                <input type="range" id="budgetSlider" min="20" max="65" step="5" value="40" class="w-full accent-emerald-500 bg-slate-800 rounded-full h-2 cursor-pointer" oninput="updateMath()">
-                                <p class="text-sm text-emerald-400 mt-2 font-bold text-center">Max Spend: £<span id="finalBudgetOut">1,240</span>/mo</p>
+                                <input type="range" id="budgetSlider" min="20" max="65" step="5" value="40" class="w-full" oninput="updateMath()">
+                                <div class="bg-slate-900/50 border border-slate-700 p-3 rounded-xl mt-4 text-center">
+                                    <p class="text-xs text-slate-400">Combined Max Spend</p>
+                                    <p class="text-lg text-emerald-400 font-bold">£<span id="finalBudgetOut">1,240</span>/mo</p>
+                                </div>
                             </div>
 
                             <hr class="border-slate-700/50">
 
+                            <!-- Postcode -->
                             <div class="relative">
-                                <label class="block text-sm font-medium text-slate-300 mb-2">Office Address / Postcode</label>
-                                <input type="text" id="postcode" placeholder="Start typing address or postcode..." class="w-full bg-slate-900/50 border border-slate-700/50 rounded-2xl px-4 py-3 font-mono text-white placeholder-slate-600 focus:outline-none focus:border-emerald-500 transition" oninput="fetchAutocomplete(this.value)">
-                                <ul id="autocompleteList" class="absolute top-full left-0 w-full bg-slate-800 border border-slate-600 rounded-xl mt-1 hidden z-50 max-h-48 overflow-y-auto text-sm shadow-2xl"></ul>
-                            </div>
-                            
-                            <div class="grid grid-cols-2 gap-4">
-                                <div>
-                                    <label class="block text-sm font-medium text-slate-300 mb-2">Office Days</label>
-                                    <select id="days" class="w-full bg-slate-900/50 border border-slate-700/50 rounded-2xl px-3 py-3 text-sm text-slate-200 outline-none">
-                                        <option value="1">1 Day</option><option value="3" selected>3 Days</option><option value="5">5 Days</option>
-                                    </select>
-                                </div>
-                                <div>
-                                    <label class="block text-sm font-medium text-slate-300 mb-2">Home Size</label>
-                                    <select id="propertyType" class="w-full bg-slate-900/50 border border-slate-700/50 rounded-2xl px-3 py-3 text-sm text-slate-200 outline-none">
-                                        <option value="1-Bed Private Flat">1 Bedroom</option><option value="2-Bed Private Flat">2 Bedroom</option>
-                                    </select>
-                                </div>
+                                <label class="block text-sm font-medium text-slate-300 mb-2">Office Postcode</label>
+                                <input type="text" id="postcode" class="w-full bg-slate-900/50 border border-slate-700/50 rounded-2xl px-4 py-3 font-mono text-white placeholder-slate-600 focus:border-emerald-500 outline-none">
                             </div>
 
-                            <button type="submit" class="w-full bg-gradient-to-r from-emerald-500 to-emerald-600 hover:from-emerald-400 text-white font-bold py-4 rounded-2xl transition shadow-lg cursor-pointer text-sm">
-                                FIND MY NEIGHBORHOOD
+                            <button type="submit" class="w-full bg-gradient-to-r from-emerald-500 to-emerald-600 hover:from-emerald-400 text-white font-bold py-4 rounded-2xl transition shadow-lg">
+                                FIND NEIGHBORHOODS
                             </button>
                         </form>
                     </div>
@@ -155,121 +195,124 @@
                 
                 <!-- RESULTS PANEL -->
                 <div class="lg:col-span-8">
-                    <div id="resultsLayout" class="space-y-6 min-h-[500px]">
+                    <div id="resultsLayout" class="space-y-6">
                         <div class="text-center text-slate-500 py-32 glass rounded-3xl">
-                            <p class="text-base font-medium">Awaiting salary & postcode to calculate door-to-door routes.</p>
+                            <p class="text-base font-medium">Awaiting salary & postcode to calculate routes.</p>
                         </div>
                     </div>
-                    
-                    <div id="paginationControls" class="hidden flex justify-between items-center mt-8 glass p-4 rounded-2xl">
-                        <button id="btnPrev" onclick="changePage(-1)" class="bg-slate-800 hover:bg-slate-700 text-white px-5 py-2 rounded-xl text-sm font-bold disabled:opacity-50">← Prev</button>
-                        <span id="pageIndicator" class="text-sm font-medium text-slate-400">Page 1</span>
-                        <button id="btnNext" onclick="changePage(1)" class="bg-slate-800 hover:bg-slate-700 text-white px-5 py-2 rounded-xl text-sm font-bold disabled:opacity-50">Next →</button>
-                    </div>
                 </div>
-
             </main>
         </div>
+
+        <!-- COMMUNITY HUB -->
+        <div id="surveyTab" class="hidden glass p-10 rounded-3xl mb-8 max-w-2xl mx-auto text-center">
+            <h2 class="text-3xl font-bold text-white mb-2">Community Hub</h2>
+            <p class="text-slate-400 mb-6">Coming soon!</p>
+        </div>
+
     </div>
 
     <script>
         let isUserSignedIn = false;
+        let authToken = null;
         let computedTotalBudget = 0;
         let globalResults = [];
-        let currentPage = 1;
-        const itemsPerPage = 5;
-        let userEmailAddress = "";
 
-        // --- NEW OTP AUTH LOGIC ---
-        async function handleAuth(signIn) {
-            if (!signIn) {
-                document.getElementById('authModal').classList.add('hidden');
-                document.getElementById('navUserStatus').innerText = "Guest Mode";
-                return;
-            }
+        const API_URL = "https://keelengine-backend.onrender.com"; // UPDATE THIS IF NEEDED
 
-            const email = prompt("Enter your email address to log in or register:");
-            if (!email) return;
-            userEmailAddress = email;
-
-            try {
-                // 1. Ask Backend to send an OTP
-                const response = await fetch("https://keelengine-backend.onrender.com/api/auth/send-otp", {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ email: email })
-                });
-                const data = await response.json();
-                alert(data.message); 
+        // --- AUTH & VIEW LOGIC ---
+        function toggleAppView(showApp, signedIn, email = "") {
+            isUserSignedIn = signedIn;
+            if (showApp) {
+                document.getElementById('authPage').classList.add('hidden');
+                document.getElementById('appPage').classList.remove('hidden');
                 
-                // 2. Prompt user for OTP verification
-                const otp = prompt("Please enter the 6-digit verification code:");
-                if (!otp) return;
-
-                const verifyResponse = await fetch("https://keelengine-backend.onrender.com/api/auth/verify-otp", {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ email: email, otp: otp })
-                });
-                const verifyData = await verifyResponse.json();
-
-                // 3. Success check
-                if (verifyResponse.ok) {
-                    alert("Verification successful! Profile loaded.");
-                    isUserSignedIn = true;
-                    document.getElementById('authModal').classList.add('hidden');
-                    document.getElementById('navUserStatus').innerText = email;
-                    document.getElementById('navUserStatus').classList.add('text-emerald-400');
-                    document.getElementById('tab-profile').classList.remove('hidden');
-                    renderPage();
+                const statusBtn = document.getElementById('navUserStatus');
+                if (signedIn) {
+                    statusBtn.innerText = `👤 ${email}`;
+                    statusBtn.classList.replace('text-slate-300', 'text-emerald-400');
                 } else {
-                    alert("Error: " + verifyData.detail);
+                    statusBtn.innerText = "Guest - Click to Sign in";
+                    statusBtn.classList.replace('text-emerald-400', 'text-slate-300');
                 }
-            } catch (err) {
-                alert("Failed to reach authentication server.");
+            } else {
+                document.getElementById('authPage').classList.remove('hidden');
+                document.getElementById('appPage').classList.add('hidden');
             }
         }
 
+        async function handleAuth(action) {
+            const email = document.getElementById('authEmail').value;
+            const pass = document.getElementById('authPassword').value;
+            
+            if (!email || !pass) return alert("Enter email and password!");
+            
+            const endpoint = action === 'login' ? '/api/auth/login' : '/api/auth/signup';
+            
+            try {
+                const res = await fetch(`${API_URL}${endpoint}`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ email: email, password: pass })
+                });
+                
+                const data = await res.json();
+                
+                if (res.ok) {
+                    if (action === 'login') authToken = data.access_token;
+                    alert(data.message || "Logged in successfully!");
+                    toggleAppView(true, true, data.user);
+                } else {
+                    alert("Error: " + data.detail);
+                }
+            } catch (e) {
+                alert("Server connection failed.");
+            }
+        }
+
+        function handleProfileClick() {
+            if (isUserSignedIn) {
+                switchTab('profile');
+            } else {
+                toggleAppView(false, false); // Send back to login screen
+            }
+        }
+
+        function signOut() {
+            isUserSignedIn = false;
+            authToken = null;
+            toggleAppView(false, false);
+            switchTab('home');
+        }
+
+        // --- TABS & PROFILE ---
         function switchTab(tabId) {
-            ['home', 'survey', 'help', 'dev', 'profile'].forEach(id => {
+            ['home', 'survey', 'profile'].forEach(id => {
                 const el = document.getElementById(id + 'Tab');
                 const btn = document.getElementById('tab-' + id);
                 if(el) el.classList.add('hidden');
                 if(btn) btn.classList.remove('text-emerald-400');
             });
             document.getElementById(tabId + 'Tab').classList.remove('hidden');
-            document.getElementById('tab-' + tabId).classList.add('text-emerald-400');
+            if(document.getElementById('tab-' + tabId)) document.getElementById('tab-' + tabId).classList.add('text-emerald-400');
         }
 
-        // --- POSTCODE AUTOCOMPLETE LOGIC ---
-        let debounceTimer;
-        async function fetchAutocomplete(query) {
-            const list = document.getElementById('autocompleteList');
-            if(query.length < 2) { list.classList.add('hidden'); return; }
-            
-            clearTimeout(debounceTimer);
-            debounceTimer = setTimeout(async () => {
-                try {
-                    const res = await fetch(`https://api.postcodes.io/postcodes/${query}/autocomplete`);
-                    const data = await res.json();
-                    if(data.status === 200 && data.result) {
-                        list.innerHTML = data.result.map(pc => 
-                            `<li onclick="selectPostcode('${pc}')" class="px-4 py-3 hover:bg-emerald-900/40 cursor-pointer border-b border-slate-700 last:border-0">${pc}</li>`
-                        ).join('');
-                        list.classList.remove('hidden');
-                    } else {
-                        list.classList.add('hidden');
-                    }
-                } catch(e) { list.classList.add('hidden'); }
-            }, 300);
+        function switchProfileSubTab(subId) {
+            ['basic', 'saved', 'passwords'].forEach(id => {
+                document.getElementById('psub-' + id).classList.add('hidden');
+                document.getElementById('ptab-' + id).className = "px-4 py-2 rounded-lg text-sm font-bold bg-slate-800 text-slate-400 hover:text-white";
+            });
+            document.getElementById('psub-' + subId).classList.remove('hidden');
+            document.getElementById('ptab-' + subId).className = "px-4 py-2 rounded-lg text-sm font-bold bg-emerald-600 text-white";
         }
 
-        function selectPostcode(pc) {
-            document.getElementById('postcode').value = pc;
-            document.getElementById('autocompleteList').classList.add('hidden');
+        // --- UI DYNAMICS & MATH ---
+        function toggleCouple() {
+            const isCouple = document.getElementById('moveType').value === 'couple';
+            document.getElementById('partnerSection').classList.toggle('hidden', !isCouple);
+            updateMath();
         }
 
-        // --- FINANCIAL MATH ---
         function calculateNetMonthly(gross) {
             let tax = 0;
             if (gross > 12570) {
@@ -281,159 +324,129 @@
         }
 
         function updateMath() {
-            const gross = parseFloat(document.getElementById('grossSalary').value) || 0;
-            const netMonthly = calculateNetMonthly(gross);
-            document.getElementById('netMonthlyOut').innerText = `£${Math.round(netMonthly).toLocaleString()}`;
-            const pct = parseInt(document.getElementById('budgetSlider').value);
-            document.getElementById('budgetPercentOut').innerText = pct;
-            computedTotalBudget = Math.round(netMonthly * (pct / 100));
+            const isCouple = document.getElementById('moveType').value === 'couple';
+            const s1 = parseInt(document.getElementById('grossSalary').value);
+            const s2 = isCouple ? parseInt(document.getElementById('partnerAssessment')?.value || document.getElementById('partnerSalary').value) : 0;
+            const split = isCouple ? parseInt(document.getElementById('splitSlider').value) : 100;
+            const pSplit = 100 - split;
+
+            // Update UI Labels
+            document.getElementById('salaryOut').innerText = s1.toLocaleString();
+            if(isCouple) document.getElementById('partnerSalaryOut').innerText = s2.toLocaleString();
+            if(isCouple) {
+                document.getElementById('splitYou').innerText = split;
+                document.getElementById('splitPartner').innerText = pSplit;
+            }
+
+            // Easter Egg Logic
+            const egg = document.getElementById('easterEgg');
+            if (s1 === 200000 || (isCouple && s2 === 200000)) {
+                egg.classList.remove('hidden');
+            } else {
+                egg.classList.add('hidden');
+            }
+
+            // Budget Math
+            const net1 = calculateNetMonthly(s1);
+            const net2 = isCouple ? calculateNetMonthly(s2) : 0;
+            const budgetPct = parseInt(document.getElementById('budgetSlider').value) / 100;
+            
+            document.getElementById('budgetPercentOut').innerText = (budgetPct * 100).toFixed(0);
+            
+            computedTotalBudget = Math.round((net1 + net2) * budgetPct);
             document.getElementById('finalBudgetOut').innerText = computedTotalBudget.toLocaleString();
         }
 
-        // --- RENDER LOGIC ---
-        function renderPage() {
-            const layout = document.getElementById('resultsLayout');
-            layout.innerHTML = '';
-            
-            const startIdx = (currentPage - 1) * itemsPerPage;
-            const endIdx = startIdx + itemsPerPage;
-            const pageData = globalResults.slice(startIdx, endIdx);
-            const targetPostcode = document.getElementById('postcode').value.trim();
+        // Initialize math on load
+        updateMath();
 
-            pageData.forEach((hub, idx) => {
-                const mapId = "map_page_" + currentPage + "_" + idx;
-                const bandD = hub.tax_base;
-                const taxList = `Band A: £${Math.round(bandD*6/9)} | Band B: £${Math.round(bandD*7/9)} | Band C: £${Math.round(bandD*8/9)}<br><b class='text-emerald-300'>Band D: £${bandD}</b>`;
-                const mapsUrl = `https://www.google.com/maps/dir/?api=1&origin=${hub.latitude},${hub.longitude}&destination=${encodeURIComponent(targetPostcode)}&travelmode=transit`;
-                
-                const saveBtnHTML = isUserSignedIn ? `<button onclick="alert('Saved to Profile Database!')" class="mt-4 w-full bg-slate-800 hover:bg-slate-700 text-white font-bold py-2 rounded-xl text-xs transition border border-slate-600">❤️ Save Neighborhood</button>` : `<button disabled class="mt-4 w-full bg-slate-900/50 text-slate-500 font-bold py-2 rounded-xl text-xs border border-slate-800 cursor-not-allowed">Sign In to Save</button>`;
-
-                layout.innerHTML += `
-                    <div class="glass rounded-3xl p-6 shadow-xl relative border border-slate-700/40 hover:border-emerald-500/30 transition-all">
-                        <div class="flex justify-between items-start mb-5">
-                            <div>
-                                <h3 class="text-2xl font-bold text-white">${hub.neighborhood}</h3>
-                                <p class="text-sm text-slate-400 mt-1">${hub.borough} &nbsp;•&nbsp; ${hub.outcode}</p>
-                            </div>
-                            <div class="bg-slate-900/80 border border-slate-700 rounded-xl px-4 py-2 text-center group relative cursor-help">
-                                <span class="block text-[10px] text-slate-400 uppercase font-bold tracking-wider">Score ⓘ</span>
-                                <span class="text-xl font-black text-emerald-400">${hub.suggestion_score}</span>
-                                <div class="tooltip-content absolute top-full right-0 mt-2 w-48 bg-slate-800 border border-slate-600 p-2 rounded-lg text-xs z-50 text-left text-slate-300">
-                                    Math: 100 - (Commute Time) - (Fares). Highest score wins.
-                                </div>
-                            </div>
-                        </div>
-                        
-                        <div id="${mapId}" class="w-full h-40 rounded-2xl overflow-hidden border border-slate-700/50 mb-5 z-0"></div>
-                        
-                        <div class="grid grid-cols-3 gap-3 text-left mb-4">
-                            <div class="bg-slate-900/40 p-4 rounded-xl relative group cursor-pointer border border-transparent hover:border-slate-700">
-                                <span class="block text-xs text-slate-400 mb-1">Door-to-Door ⓘ</span>
-                                <strong class="text-white text-lg">${hub.duration}m</strong>
-                                <div class="tooltip-content absolute bottom-full left-0 mb-3 w-48 bg-slate-800 border border-slate-600 p-3 rounded-xl text-xs z-50"><b class="text-white">Transit Method:</b><br><span class="text-emerald-400">${hub.route}</span><br><br>Includes 12-15m walk/platform wait.</div>
-                            </div>
-
-                            <div class="bg-slate-900/40 p-4 rounded-xl relative group cursor-pointer border border-transparent hover:border-emerald-900/50">
-                                <span class="block text-xs text-emerald-400 mb-1">Rent Range ⓘ</span>
-                                <strong class="text-emerald-400 text-lg">${hub.rent_range}</strong>
-                            </div>
-
-                            <div class="bg-slate-900/40 p-4 rounded-xl relative group cursor-pointer border border-transparent hover:border-blue-900/50">
-                                <span class="block text-xs text-blue-400 mb-1">Transit / mo ⓘ</span>
-                                <strong class="text-blue-400 text-lg">£${hub.commute_share}</strong>
-                                <div class="tooltip-content absolute bottom-full right-0 mb-3 w-48 bg-slate-800 border border-blue-700 p-3 rounded-xl text-xs z-50"><span class="text-slate-200">Single Fare: ${hub.single_fare}</span><br><span class="text-slate-400 italic">${hub.fare_log}</span></div>
-                            </div>
-                        </div>
-
-                        <div class="flex gap-4 items-center">
-                            <div class="w-1/3 bg-slate-900/40 p-3 rounded-xl relative group cursor-help text-center border border-slate-700/50 hover:border-slate-500 transition">
-                                <span class="text-[10px] text-slate-400 uppercase font-bold block mb-1">Tax Bands ⓘ</span>
-                                <strong class="text-white text-xs font-mono">£${bandD} (D)</strong>
-                                <div class="tooltip-content absolute bottom-full left-0 mb-3 w-48 bg-slate-800 border border-slate-600 p-3 rounded-xl text-xs z-50 text-left"><span class="text-slate-300 font-mono leading-relaxed">${taxList}</span></div>
-                            </div>
-                            
-                            <a href="${mapsUrl}" target="_blank" class="w-2/3 bg-blue-600 hover:bg-blue-500 shadow-lg border border-blue-500 rounded-xl py-3 text-center text-xs font-bold text-white transition">
-                                🗺️ Live Google Maps Route
-                            </a>
-                        </div>
-                        ${saveBtnHTML}
-                    </div>`;
-
-                setTimeout(() => {
-                    let map = L.map(mapId, { zoomControl: false, attributionControl: false }).setView([hub.latitude, hub.longitude], 13);
-                    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
-                    L.marker([hub.latitude, hub.longitude]).addTo(map);
-                }, 50);
-            });
-
-            const totalPages = Math.ceil(globalResults.length / itemsPerPage);
-            document.getElementById('pageIndicator').innerText = `Page ${currentPage} of ${totalPages}`;
-            document.getElementById('btnPrev').disabled = currentPage === 1;
-            document.getElementById('btnNext').disabled = currentPage === totalPages;
-            document.getElementById('paginationControls').classList.remove('hidden');
-            window.scrollTo({ top: 0, behavior: 'smooth' });
-        }
-
-        function changePage(dir) {
-            currentPage += dir;
-            renderPage();
-        }
-
-        // --- SUBMIT COMPUTE FORM LOGIC ---
+        // --- SUBMIT COMPUTE ---
         document.getElementById('matrixForm').addEventListener('submit', async (e) => {
             e.preventDefault();
             const postcode = document.getElementById('postcode').value.trim();
             if (!postcode) return;
             
             const layout = document.getElementById('resultsLayout');
-            document.getElementById('paginationControls').classList.add('hidden');
-            layout.innerHTML = `<div class='glass rounded-3xl py-32 text-center'><div class='w-10 h-10 border-4 border-emerald-500 border-t-transparent rounded-full animate-spin mx-auto'></div><p class='mt-6 text-slate-300 font-medium tracking-wide'>Loading the best suggestions for you...</p></div>`;
+            layout.innerHTML = `<div class='glass rounded-3xl py-32 text-center'><div class='w-10 h-10 border-4 border-emerald-500 border-t-transparent rounded-full animate-spin mx-auto'></div></div>`;
 
             try {
-                // FIXED: Now points to /api/compute endpoint
-                const res = await fetch("https://keelengine-backend.onrender.com/api/compute", {
+                const res = await fetch(`${API_URL}/api/compute`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
                         postcode: postcode,
-                        days_per_week: parseInt(document.getElementById('days').value),
-                        property_type: document.getElementById('propertyType').value,
+                        days_per_week: 3,
+                        property_type: "1-Bed Private Flat",
                         total_budget: computedTotalBudget
                     })
                 });
                 
                 const data = await res.json();
                 
-                if (data.error) {
-                    layout.innerHTML = `<div class='text-sm text-red-400 text-center py-10 glass rounded-3xl border border-red-900/50'>❌ ${data.error}</div>`;
-                    return;
-                }
+                if (data.hubs && data.hubs.length > 0) {
+                    layout.innerHTML = '';
+                    data.hubs.forEach((hub, idx) => {
+                        const mapId = "map_" + idx;
+                        const saveBtnHTML = isUserSignedIn ? 
+                            `<button onclick="saveToDB('${hub.neighborhood}', '${hub.outcode}', '${hub.rent_range}', ${hub.suggestion_score})" class="mt-4 w-full bg-slate-800 hover:bg-slate-700 text-white font-bold py-2 rounded-xl text-xs transition border border-slate-600">❤️ Save Neighborhood</button>` 
+                            : `<button disabled class="mt-4 w-full bg-slate-900/50 text-slate-500 font-bold py-2 rounded-xl text-xs border border-slate-800 cursor-not-allowed">Sign In to Save</button>`;
 
-                if (data.is_outside_london) {
-                    layout.innerHTML = `
-                        <div class="glass p-8 rounded-3xl border border-amber-500/50 bg-amber-950/20 text-center">
-                            <div class="text-4xl mb-4">🌍</div>
-                            <h3 class="text-xl font-bold text-amber-400 mb-2">Outside Greater London Detected</h3>
-                            <p class="text-slate-300 text-sm leading-relaxed">${data.message}</p>
-                        </div>`;
-                    return;
-                }
-                
-                if (data.hubs.length === 0) {
-                    layout.innerHTML = `<div class='text-sm text-amber-400 text-center py-10 glass rounded-3xl'>⚠️ No properties found within your £${computedTotalBudget} budget. Try increasing your allocation slider.</div>`;
-                    return;
-                }
+                        layout.innerHTML += `
+                            <div class="glass rounded-3xl p-6 shadow-xl mb-6 relative border border-slate-700/40">
+                                <h3 class="text-2xl font-bold text-white mb-4">${hub.neighborhood} <span class="text-sm font-normal text-slate-400">(${hub.outcode})</span></h3>
+                                <div id="${mapId}" class="w-full h-40 rounded-2xl overflow-hidden border border-slate-700/50 mb-5 z-0"></div>
+                                <div class="grid grid-cols-2 gap-3 text-left mb-4">
+                                    <div class="bg-slate-900/40 p-3 rounded-xl border border-transparent">
+                                        <span class="block text-xs text-emerald-400 mb-1">Rent Range</span>
+                                        <strong class="text-emerald-400 text-lg">${hub.rent_range}</strong>
+                                    </div>
+                                    <div class="bg-slate-900/40 p-3 rounded-xl border border-transparent">
+                                        <span class="block text-xs text-white mb-1">Door-to-Door</span>
+                                        <strong class="text-white text-lg">${hub.duration}m</strong>
+                                    </div>
+                                </div>
+                                ${saveBtnHTML}
+                            </div>`;
 
-                globalResults = data.hubs;
-                currentPage = 1;
-                renderPage();
-
+                        setTimeout(() => {
+                            let map = L.map(mapId, { zoomControl: false, attributionControl: false }).setView([hub.latitude, hub.longitude], 13);
+                            L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
+                            L.marker([hub.latitude, hub.longitude]).addTo(map);
+                        }, 50);
+                    });
+                }
             } catch(err) {
-                layout.innerHTML = `<div class='text-sm text-red-400 text-center py-10 glass rounded-3xl shadow-xl'>❌ Unable to connect to computation server.</div>`;
+                layout.innerHTML = `<div class='text-sm text-red-400 text-center py-10 glass rounded-3xl'>❌ Server Error</div>`;
             }
         });
 
-        updateMath(); 
+        // --- BACKEND PROFILE ACTIONS ---
+        async function saveToDB(neighborhood, outcode, rent_range, score) {
+            if (!authToken) return;
+            try {
+                await fetch(`${API_URL}/api/properties/save`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${authToken}` },
+                    body: JSON.stringify({ neighborhood, outcode, rent_range, suggestion_score: score })
+                });
+                alert('Saved to your profile!');
+            } catch (e) { alert('Error saving property.'); }
+        }
+
+        async function saveProfileDetails() {
+            if (!authToken) return;
+            try {
+                await fetch(`${API_URL}/api/profile/update`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${authToken}` },
+                    body: JSON.stringify({ 
+                        company_name: document.getElementById('profCompany').value,
+                        favorite_area: document.getElementById('profArea').value
+                    })
+                });
+                alert('Profile details updated!');
+            } catch (e) { alert('Error updating profile.'); }
+        }
     </script>
 </body>
 </html>
