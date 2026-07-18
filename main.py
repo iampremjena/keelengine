@@ -1,12 +1,12 @@
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Header
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
-import random
+from typing import Optional, List
+from supabase import create_client, Client
 from data_models import fetch_convenient_commuter_hubs
 
-app = FastAPI(title="KeelEngine Pro", version="6.0")
+app = FastAPI(title="KeelEngine Pro", version="7.0")
 
-# Allow all origins to prevent connection blocks from Vercel
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],  
@@ -15,6 +15,11 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# --- SUPABASE CREDENTIALS ---
+SUPABASE_URL = "https://lsokajyrqpodytvtpczt.supabase.co"
+SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imxzb2thanlycXBvZHl0dnRwY3p0Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODM1Mjk4MzYsImV4cCI6MjA5OTEwNTgzNn0.xgks23X8C2eRExANCMu51PWfxZ7wxfwwHhG44a_66Kw"
+supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
+
 # --- MODELS ---
 class ComputePayload(BaseModel):
     postcode: str
@@ -22,18 +27,59 @@ class ComputePayload(BaseModel):
     property_type: str
     total_budget: float  
 
-class EmailAuthRequest(BaseModel):
+class AuthRequest(BaseModel):
     email: str
+    password: str
 
-class VerifyOtpRequest(BaseModel):
-    email: str
-    otp: str
+class ProfileUpdate(BaseModel):
+    company_name: Optional[str] = None
+    favorite_area: Optional[str] = None
+    mobile_number: Optional[str] = None
 
-# --- MOCK DATABASES ---
-OTP_DATABASE = {}  
-USER_DATABASE = {} 
+class SaveProperty(BaseModel):
+    neighborhood: str
+    outcode: str
+    rent_range: str
+    suggestion_score: float
 
-# --- ROUTES ---
+# --- AUTH ROUTES ---
+@app.post("/api/auth/signup")
+def sign_up(request: AuthRequest):
+    try:
+        res = supabase.auth.sign_up({"email": request.email, "password": request.password})
+        if res.user:
+            # Create a blank profile
+            supabase.table("profiles").insert({"id": res.user.id, "email": request.email}).execute()
+            return {"message": "Account created successfully!", "user": res.user.email}
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+@app.post("/api/auth/login")
+def log_in(request: AuthRequest):
+    try:
+        res = supabase.auth.sign_in_with_password({"email": request.email, "password": request.password})
+        return {"access_token": res.session.access_token, "user": res.user.email}
+    except Exception as e:
+        raise HTTPException(status_code=400, detail="Invalid email or password.")
+
+# --- PROFILE & SAVED DATA ROUTES ---
+@app.post("/api/profile/update")
+def update_profile(profile: ProfileUpdate, authorization: str = Header(...)):
+    token = authorization.split(" ")[1]
+    user = supabase.auth.get_user(token).user
+    supabase.table("profiles").update(profile.dict(exclude_none=True)).eq("id", user.id).execute()
+    return {"message": "Profile updated!"}
+
+@app.post("/api/properties/save")
+def save_property(prop: SaveProperty, authorization: str = Header(...)):
+    token = authorization.split(" ")[1]
+    user = supabase.auth.get_user(token).user
+    data = prop.dict()
+    data["user_id"] = user.id
+    supabase.table("saved_properties").insert(data).execute()
+    return {"message": "Neighborhood saved!"}
+
+# --- COMPUTE ROUTE ---
 @app.post("/api/compute")
 async def compute_matrix(payload: ComputePayload):
     results = fetch_convenient_commuter_hubs(
@@ -65,35 +111,5 @@ async def compute_matrix(payload: ComputePayload):
             "longitude": float(row["Longitude"]),
             "suggestion_score": float(row["Suggestion_Score"]),
             "tax_base": int(row["Council_Tax_Band_D_Base"]),
-            "grocery": str(row["Nearest_Grocery"])
         })
     return {"is_outside_london": False, "hubs": output_cards}
-
-@app.post("/api/auth/send-otp")
-def send_otp(request: EmailAuthRequest):
-    generated_otp = f"{random.randint(100000, 999999)}"
-    OTP_DATABASE[request.email] = generated_otp
-    
-    # Print to Render logs so you can see the code!
-    print(f"\n======================================")
-    print(f"[SECURITY] OTP for {request.email} is: {generated_otp}")
-    print(f"======================================\n")
-    
-    return {"message": "OTP code generated! Check your Render terminal logs to copy it."}
-
-@app.post("/api/auth/verify-otp")
-def verify_otp(request: VerifyOtpRequest):
-    stored_otp = OTP_DATABASE.get(request.email)
-    
-    if not stored_otp or stored_otp != request.otp:
-        raise HTTPException(status_code=400, detail="Invalid verification code or code expired.")
-    
-    if request.email not in USER_DATABASE:
-        USER_DATABASE[request.email] = {"saved_neighborhoods": []}
-        
-    del OTP_DATABASE[request.email]
-    return {"status": "success", "user": USER_DATABASE[request.email]}
-
-@app.get("/health")
-async def system_health_ping():
-    return {"status": "online"}
