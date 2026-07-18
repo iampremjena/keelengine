@@ -1,24 +1,39 @@
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
+import random
 from data_models import fetch_convenient_commuter_hubs
 
 app = FastAPI(title="KeelEngine Pro", version="6.0")
 
+# Allow all origins to prevent connection blocks from Vercel
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["https://keelengine.co.uk", "https://www.keelengine.co.uk"],  
+    allow_origins=["*"],  
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
+# --- MODELS ---
 class ComputePayload(BaseModel):
     postcode: str
     days_per_week: int
     property_type: str
     total_budget: float  
 
+class EmailAuthRequest(BaseModel):
+    email: str
+
+class VerifyOtpRequest(BaseModel):
+    email: str
+    otp: str
+
+# --- MOCK DATABASES ---
+OTP_DATABASE = {}  
+USER_DATABASE = {} 
+
+# --- ROUTES ---
 @app.post("/api/compute")
 async def compute_matrix(payload: ComputePayload):
     results = fetch_convenient_commuter_hubs(
@@ -53,6 +68,31 @@ async def compute_matrix(payload: ComputePayload):
             "grocery": str(row["Nearest_Grocery"])
         })
     return {"is_outside_london": False, "hubs": output_cards}
+
+@app.post("/api/auth/send-otp")
+def send_otp(request: EmailAuthRequest):
+    generated_otp = f"{random.randint(100000, 999999)}"
+    OTP_DATABASE[request.email] = generated_otp
+    
+    # Print to Render logs so you can see the code!
+    print(f"\n======================================")
+    print(f"[SECURITY] OTP for {request.email} is: {generated_otp}")
+    print(f"======================================\n")
+    
+    return {"message": "OTP code generated! Check your Render terminal logs to copy it."}
+
+@app.post("/api/auth/verify-otp")
+def verify_otp(request: VerifyOtpRequest):
+    stored_otp = OTP_DATABASE.get(request.email)
+    
+    if not stored_otp or stored_otp != request.otp:
+        raise HTTPException(status_code=400, detail="Invalid verification code or code expired.")
+    
+    if request.email not in USER_DATABASE:
+        USER_DATABASE[request.email] = {"saved_neighborhoods": []}
+        
+    del OTP_DATABASE[request.email]
+    return {"status": "success", "user": USER_DATABASE[request.email]}
 
 @app.get("/health")
 async def system_health_ping():
