@@ -8,7 +8,7 @@ import Dashboard from './pages/Dashboard';
 import FaqPage from './pages/FaqPage';
 import SurveyPage from './pages/SurveyPage';
 import ProfileHub from './pages/ProfileHub';
-import UpdatesPage from './pages/UpdatesPage';
+import UpdatesPage from './pages/UpdatesPage'; // <--- Check that this matches exactly your filename 'UpdatesPage.jsx'
 
 function AppContent() {
   const [session, setSession] = useState(null);
