@@ -36,6 +36,10 @@ export default function FaqPage() {
     }
   ];
 
+  useEffect(() => {
+    document.title = "KeelEngine | FAQ Support";
+  }, []);
+
   return (
     <div className="max-w-4xl mx-auto px-4 py-12">
       <div className="glass p-10 rounded-3xl shadow-2xl border border-slate-700/40">

@@ -10,6 +10,10 @@ export default function ProfileHub({ session }) {
   if (location.pathname.includes('/saved')) currentSub = 'saved';
   if (location.pathname.includes('/security')) currentSub = 'security';
 
+  useEffect(() => {
+    document.title = "KeelEngine | Profile Hub";
+  }, []);
+
   const [company, setCompany] = useState('');
   const [area, setArea] = useState('');
   const [avatarUrl, setAvatarUrl] = useState(null);

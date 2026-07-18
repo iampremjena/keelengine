@@ -11,6 +11,10 @@ export default function UpdatesPage({ session }) {
   const isAdmin = session?.user?.email === 'iampremjena@gmail.com';
 
   useEffect(() => {
+    document.title = "KeelEngine | Platform Updates";
+  }, []);
+
+  useEffect(() => {
     fetchPosts();
   }, []);
 

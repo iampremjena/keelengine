@@ -40,6 +40,12 @@ export default function Dashboard({ session }) {
   const [results, setResults] = useState([]);
   const [errorMsg, setErrorMsg] = useState('');
 
+  
+  // Add this inside the component:
+  useEffect(() => {
+    document.title = "KeelEngine | Dashboard";
+  }, []);
+
   // UK Net Take-Home Salary Calculator Matrix
   const calculateNetMonthly = (gross) => {
     let tax = 0;
