@@ -345,7 +345,7 @@
             const splitYou = isCouple ? parseInt(document.getElementById('splitSlider').value) : 100;
             const splitPartner = 100 - splitYou;
 
-            // 1. Update Salary Labels
+            // Update Salary Labels
             document.getElementById('salaryOut').innerText = s1.toLocaleString();
             if(isCouple) {
                 document.getElementById('partnerSalaryOut').innerText = s2.toLocaleString();
@@ -353,7 +353,7 @@
                 document.getElementById('splitPartner').innerText = splitPartner;
             }
 
-            // 2. Easter Egg Logic (If either person makes 200k)
+            // Easter Egg Logic
             const egg = document.getElementById('easterEgg');
             if (s1 === 200000 || (isCouple && s2 === 200000)) {
                 egg.classList.remove('hidden');
@@ -361,7 +361,7 @@
                 egg.classList.add('hidden');
             }
 
-            // 3. Budget Math
+            // Budget Math
             const net1 = calculateNetMonthly(s1);
             const net2 = isCouple ? calculateNetMonthly(s2) : 0;
             const budgetPct = parseInt(document.getElementById('budgetSlider').value) / 100;
@@ -371,14 +371,13 @@
             computedTotalBudget = Math.round((net1 + net2) * budgetPct);
             document.getElementById('finalBudgetOut').innerText = computedTotalBudget.toLocaleString();
 
-            // 4. Update Cash Split display
+            // Update Cash Split display
             if(isCouple) {
                 document.getElementById('cashYou').innerText = Math.round(computedTotalBudget * (splitYou / 100)).toLocaleString();
                 document.getElementById('cashPartner').innerText = Math.round(computedTotalBudget * (splitPartner / 100)).toLocaleString();
             }
         }
 
-        // Initialize math on first load
         updateMath();
 
         // --- SUBMIT COMPUTE TO RENDER ---
@@ -412,24 +411,71 @@
                     layout.innerHTML = '';
                     data.hubs.forEach((hub, idx) => {
                         const mapId = "map_" + idx;
+                        const targetPostcode = document.getElementById('postcode').value.trim();
+                        
+                        // Regenerate the math variables for the icons
+                        const bandD = hub.tax_base;
+                        const taxList = `Band A: £${Math.round(bandD*6/9)} | Band B: £${Math.round(bandD*7/9)} | Band C: £${Math.round(bandD*8/9)}<br><b class='text-emerald-300'>Band D: £${bandD}</b>`;
+                        const mapsUrl = `https://www.google.com/maps/dir/?api=1&origin=${hub.latitude},${hub.longitude}&destination=${encodeURIComponent(targetPostcode)}&travelmode=transit`;
+
                         const saveBtnHTML = isUserSignedIn ? 
-                            `<button onclick="saveToDB('${hub.neighborhood}', '${hub.outcode}', '${hub.rent_range}', ${hub.suggestion_score})" class="mt-4 w-full bg-slate-800 hover:bg-slate-700 text-white font-bold py-3 rounded-xl text-xs transition border border-slate-600 shadow-lg">❤️ Save to Profile</button>` 
-                            : `<button disabled class="mt-4 w-full bg-slate-900/50 text-slate-500 font-bold py-3 rounded-xl text-xs border border-slate-800 cursor-not-allowed">Sign In to Save Properties</button>`;
+                            `<button onclick="saveToDB('${hub.neighborhood}', '${hub.outcode}', '${hub.rent_range}', ${hub.suggestion_score})" class="w-full bg-slate-800 hover:bg-slate-700 text-white font-bold py-3 rounded-xl text-xs transition border border-slate-600 shadow-lg">❤️ Save to Profile</button>` 
+                            : `<button disabled class="w-full bg-slate-900/50 text-slate-500 font-bold py-3 rounded-xl text-xs border border-slate-800 cursor-not-allowed">Sign In to Save Properties</button>`;
 
                         layout.innerHTML += `
                             <div class="glass rounded-3xl p-6 shadow-xl mb-6 relative border border-slate-700/40 hover:border-emerald-500/30 transition">
-                                <h3 class="text-2xl font-bold text-white mb-4">${hub.neighborhood} <span class="text-sm font-normal text-slate-400">(${hub.outcode})</span></h3>
-                                <div id="${mapId}" class="w-full h-40 rounded-2xl overflow-hidden border border-slate-700/50 mb-5 z-0"></div>
-                                <div class="grid grid-cols-2 gap-3 text-left mb-4">
-                                    <div class="bg-slate-900/40 p-4 rounded-xl border border-slate-800">
-                                        <span class="block text-xs text-emerald-400 mb-1">Rent Range</span>
-                                        <strong class="text-emerald-400 text-xl">${hub.rent_range}</strong>
+                                
+                                <!-- Header & Score -->
+                                <div class="flex justify-between items-start mb-5">
+                                    <div>
+                                        <h3 class="text-2xl font-bold text-white">${hub.neighborhood} <span class="text-sm font-normal text-slate-400">(${hub.outcode})</span></h3>
+                                        <p class="text-sm text-slate-400 mt-1">${hub.borough}</p>
                                     </div>
-                                    <div class="bg-slate-900/40 p-4 rounded-xl border border-slate-800">
-                                        <span class="block text-xs text-white mb-1">Door-to-Door</span>
-                                        <strong class="text-white text-xl">${hub.duration}m</strong>
+                                    <div class="bg-slate-900/80 border border-slate-700 rounded-xl px-4 py-2 text-center group relative cursor-help">
+                                        <span class="block text-[10px] text-slate-400 uppercase font-bold tracking-wider">Score ⓘ</span>
+                                        <span class="text-xl font-black text-emerald-400">${hub.suggestion_score}</span>
+                                        <div class="tooltip-content absolute top-full right-0 mt-2 w-48 bg-slate-800 border border-slate-600 p-2 rounded-lg text-xs z-50 text-left text-slate-300">
+                                            Math: 100 - (Commute Time) - (Fares). Highest score wins.
+                                        </div>
                                     </div>
                                 </div>
+                                
+                                <!-- Map -->
+                                <div id="${mapId}" class="w-full h-40 rounded-2xl overflow-hidden border border-slate-700/50 mb-5 z-0"></div>
+                                
+                                <!-- 3 Stat Blocks with Info Icons restored -->
+                                <div class="grid grid-cols-3 gap-3 text-left mb-5">
+                                    <div class="bg-slate-900/40 p-4 rounded-xl relative group cursor-pointer border border-transparent hover:border-slate-700">
+                                        <span class="block text-xs text-slate-400 mb-1">Door-to-Door ⓘ</span>
+                                        <strong class="text-white text-lg">${hub.duration}m</strong>
+                                        <div class="tooltip-content absolute bottom-full left-0 mb-3 w-48 bg-slate-800 border border-slate-600 p-3 rounded-xl text-xs z-50"><b class="text-white">Transit Method:</b><br><span class="text-emerald-400">${hub.route}</span><br><br>Includes 12-15m walk/platform wait.</div>
+                                    </div>
+
+                                    <div class="bg-slate-900/40 p-4 rounded-xl border border-transparent">
+                                        <span class="block text-xs text-emerald-400 mb-1">Rent Range</span>
+                                        <strong class="text-emerald-400 text-lg">${hub.rent_range}</strong>
+                                    </div>
+
+                                    <div class="bg-slate-900/40 p-4 rounded-xl relative group cursor-pointer border border-transparent hover:border-blue-900/50">
+                                        <span class="block text-xs text-blue-400 mb-1">Transit / mo ⓘ</span>
+                                        <strong class="text-blue-400 text-lg">£${hub.commute_share}</strong>
+                                        <div class="tooltip-content absolute bottom-full right-0 mb-3 w-48 bg-slate-800 border border-blue-700 p-3 rounded-xl text-xs z-50"><span class="text-slate-200">Single Fare: ${hub.single_fare}</span><br><span class="text-slate-400 italic">${hub.fare_log}</span></div>
+                                    </div>
+                                </div>
+
+                                <!-- Tax Bands and Google Maps Button -->
+                                <div class="flex gap-4 items-center mb-5">
+                                    <div class="w-1/3 bg-slate-900/40 p-3 rounded-xl relative group cursor-help text-center border border-slate-700/50 hover:border-slate-500 transition">
+                                        <span class="text-[10px] text-slate-400 uppercase font-bold block mb-1">Tax Bands ⓘ</span>
+                                        <strong class="text-white text-xs font-mono">£${bandD} (D)</strong>
+                                        <div class="tooltip-content absolute bottom-full left-0 mb-3 w-48 bg-slate-800 border border-slate-600 p-3 rounded-xl text-xs z-50 text-left"><span class="text-slate-300 font-mono leading-relaxed">${taxList}</span></div>
+                                    </div>
+                                    
+                                    <a href="${mapsUrl}" target="_blank" class="w-2/3 bg-blue-600 hover:bg-blue-500 shadow-lg border border-blue-500 rounded-xl py-3 text-center text-xs font-bold text-white transition">
+                                        🗺️ Live Google Maps Route
+                                    </a>
+                                </div>
+                                
                                 ${saveBtnHTML}
                             </div>`;
 
@@ -476,7 +522,7 @@
                     })
                 });
                 if(res.ok) {
-                    alert('Profile details updated!');
+                    alert('Profile details updated in database!');
                 }
             } catch (e) { alert('Error updating profile.'); }
         }
