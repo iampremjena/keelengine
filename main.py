@@ -7,7 +7,7 @@ app = FastAPI(title="KeelEngine Pro", version="6.0")
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  
+    allow_origins=["https://keelengine.co.uk", "https://www.keelengine.co.uk"],  
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
