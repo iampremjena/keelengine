@@ -5,7 +5,7 @@ from typing import Optional, List
 from supabase import create_client, Client
 from data_models import fetch_convenient_commuter_hubs
 
-app = FastAPI(title="KeelEngine Pro", version="7.0")
+app = FastAPI(title="KeelEngine Pro", version="8.0")
 
 app.add_middleware(
     CORSMiddleware,
@@ -20,7 +20,6 @@ SUPABASE_URL = "https://lsokajyrqpodytvtpczt.supabase.co"
 SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imxzb2thanlycXBvZHl0dnRwY3p0Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODM1Mjk4MzYsImV4cCI6MjA5OTEwNTgzNn0.xgks23X8C2eRExANCMu51PWfxZ7wxfwwHhG44a_66Kw"
 supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
 
-# --- MODELS ---
 class ComputePayload(BaseModel):
     postcode: str
     days_per_week: int
@@ -31,10 +30,16 @@ class AuthRequest(BaseModel):
     email: str
     password: str
 
+# Updated to capture ALL user inputs
 class ProfileUpdate(BaseModel):
     company_name: Optional[str] = None
     favorite_area: Optional[str] = None
-    mobile_number: Optional[str] = None
+    move_type: Optional[str] = None
+    gross_salary: Optional[float] = None
+    partner_salary: Optional[float] = None
+    rent_split_user: Optional[float] = None
+    budget_percent: Optional[float] = None
+    office_postcode: Optional[str] = None
 
 class SaveProperty(BaseModel):
     neighborhood: str
@@ -42,13 +47,12 @@ class SaveProperty(BaseModel):
     rent_range: str
     suggestion_score: float
 
-# --- AUTH ROUTES ---
 @app.post("/api/auth/signup")
 def sign_up(request: AuthRequest):
     try:
+        # Supabase automatically blocks duplicate emails natively
         res = supabase.auth.sign_up({"email": request.email, "password": request.password})
         if res.user:
-            # Create a blank profile
             supabase.table("profiles").insert({"id": res.user.id, "email": request.email}).execute()
             return {"message": "Account created successfully!", "user": res.user.email}
     except Exception as e:
@@ -62,13 +66,12 @@ def log_in(request: AuthRequest):
     except Exception as e:
         raise HTTPException(status_code=400, detail="Invalid email or password.")
 
-# --- PROFILE & SAVED DATA ROUTES ---
 @app.post("/api/profile/update")
 def update_profile(profile: ProfileUpdate, authorization: str = Header(...)):
     token = authorization.split(" ")[1]
     user = supabase.auth.get_user(token).user
     supabase.table("profiles").update(profile.dict(exclude_none=True)).eq("id", user.id).execute()
-    return {"message": "Profile updated!"}
+    return {"message": "Profile synced!"}
 
 @app.post("/api/properties/save")
 def save_property(prop: SaveProperty, authorization: str = Header(...)):
@@ -79,7 +82,6 @@ def save_property(prop: SaveProperty, authorization: str = Header(...)):
     supabase.table("saved_properties").insert(data).execute()
     return {"message": "Neighborhood saved!"}
 
-# --- COMPUTE ROUTE ---
 @app.post("/api/compute")
 async def compute_matrix(payload: ComputePayload):
     results = fetch_convenient_commuter_hubs(
@@ -87,12 +89,8 @@ async def compute_matrix(payload: ComputePayload):
         property_type=payload.property_type,
         total_budget=payload.total_budget
     )
-    
-    if "error" in results:
-        return {"error": results["error"], "hubs": []}
-        
-    if results.get("is_outside_london"):
-        return {"is_outside_london": True, "message": results["message"], "hubs": []}
+    if "error" in results: return {"error": results["error"], "hubs": []}
+    if results.get("is_outside_london"): return {"is_outside_london": True, "message": results["message"], "hubs": []}
         
     output_cards = []
     for row in results["hubs"]:
