@@ -367,7 +367,7 @@
             layout.innerHTML = `<div class='glass rounded-3xl py-32 text-center'><div class='w-10 h-10 border-4 border-emerald-500 border-t-transparent rounded-full animate-spin mx-auto'></div><p class='mt-6 text-slate-300 font-medium tracking-wide'>Loading the best suggestions for you...</p></div>`;
 
             try {
-                const res = await fetch('https://api.keelengine.co.uk/api/compute', {
+                const res = await fetch('https://keelengine-backend.onrender.com', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
