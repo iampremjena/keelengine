@@ -1,6 +1,11 @@
 import React from 'react';
 
 export default function FaqPage() {
+
+    useEffect(() => {
+    document.title = "KeelEngine | FAQ Support";
+  }, []);
+  
   const faqs = [
     {
       q: "1. How is the Suggestion Score calculated?",
@@ -36,9 +41,7 @@ export default function FaqPage() {
     }
   ];
 
-  useEffect(() => {
-    document.title = "KeelEngine | FAQ Support";
-  }, []);
+  
 
   return (
     <div className="max-w-4xl mx-auto px-4 py-12">
