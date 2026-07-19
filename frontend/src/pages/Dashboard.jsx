@@ -27,7 +27,6 @@ export default function Dashboard({ session }) {
 
   const [searchParams, setSearchParams] = useSearchParams();
   
-  // State is tied to URL Parameters so refreshes don't break the page
   const [moveType, setMoveType] = useState(searchParams.get('move') || 'solo');
   const [grossSalary, setGrossSalary] = useState(Number(searchParams.get('salary')) || 50000);
   const [partnerSalary, setPartnerSalary] = useState(Number(searchParams.get('partner')) || 50000);
@@ -60,21 +59,18 @@ export default function Dashboard({ session }) {
   const net2 = moveType === 'couple' ? calculateNetMonthly(partnerSalary) : 0;
   const computedTotalBudget = Math.round((net1 + net2) * (budgetSlider / 100));
 
-  // Trigger search by updating URL parameters
   const triggerSearch = (e) => {
     e.preventDefault();
     if (!postcode.trim()) return;
     setSearchParams({ postcode: postcode.toUpperCase(), move: moveType, salary: grossSalary, partner: partnerSalary, budget: budgetSlider, days: officeDays });
   };
 
-  // Reset URL parameters to go back to center form
   const clearSearch = () => {
     setSearchParams({});
     setResults([]);
     setCurrentPage(1);
   };
 
-  // Listens to URL changes and fetches data if a postcode exists in the URL
   useEffect(() => {
     const pc = searchParams.get('postcode');
     if (!pc) return;
@@ -127,7 +123,6 @@ export default function Dashboard({ session }) {
       
       <div className={`flex flex-col lg:flex-row gap-8 transition-all duration-700 ease-in-out ${!hasSearched ? 'justify-center items-center' : 'items-start'}`}>
         
-        {/* Input Form Panel */}
         <div className={`w-full transition-all duration-700 ${!hasSearched ? 'max-w-xl' : 'lg:w-1/3 sticky top-8'}`}>
           <div className="glass p-8 rounded-3xl shadow-2xl border border-emerald-900/30">
             <h2 className="text-3xl font-black text-white mb-6 text-center">Tell Us About You</h2>
@@ -151,7 +146,6 @@ export default function Dashboard({ session }) {
           </div>
         </div>
         
-        {/* Results Panel */}
         {hasSearched && (
           <div className="w-full lg:w-2/3 space-y-6">
             
@@ -172,20 +166,23 @@ export default function Dashboard({ session }) {
             )}
             
             {!loading && currentItems.map((hub, idx) => {
-              const lat = hub.Latitude;
-              const lng = hub.Longitude;
-              const name = hub.Neighborhood;
-              const outcode = hub.Station_Outcode;
-              const borough = hub.Borough;
-              const score = hub.Suggestion_Score;
-              const duration = hub.Commute_Duration;
-              const rent = hub.Rent_Range;
-              const monthlyFare = hub.Monthly_Commute_Cost || 0;
-              const singleFareStr = hub.Single_Fare_Formatted || "£0.00";
-              const fareLog = hub.Fare_Log;
-              const safety = hub.Safety_Score;
-              const grocery = hub.Nearest_Grocery;
-              const pub = hub.Nearest_Pub;
+              // 🛡️ BULLETPROOF MAPPING (Checks for both New and Old Backend Keys)
+              const lat = hub.Latitude || hub.latitude;
+              const lng = hub.Longitude || hub.longitude;
+              const name = hub.Neighborhood || hub.neighborhood || "Unknown";
+              const outcode = hub.Station_Outcode || hub.outcode || "--";
+              const borough = hub.Borough || hub.borough || "Greater London";
+              const score = hub.Suggestion_Score || hub.suggestion_score || 0;
+              const duration = hub.Commute_Duration || hub.duration || 0;
+              const rent = hub.Rent_Range || hub.rent_range || "£--";
+              
+              const monthlyFare = hub.Monthly_Commute_Cost || hub.commute_share || 0;
+              const singleFareStr = hub.Single_Fare_Formatted || hub.single_fare || "£0.00";
+              const fareLog = hub.Fare_Log || hub.fare_log || "Standard transit fare structure.";
+              
+              const safety = hub.Safety_Score || hub.safety_score || 85;
+              const grocery = hub.Nearest_Grocery || hub.nearest_grocery || "🛒 Local Grocer";
+              const pub = hub.Nearest_Pub || hub.nearest_pub || "🍻 The Red Lion";
 
               return (
                 <div key={idx} className="glass rounded-3xl p-6 shadow-xl border border-slate-700/40 hover:border-slate-500/50 transition">
@@ -206,7 +203,6 @@ export default function Dashboard({ session }) {
                     <div className="bg-slate-900/40 p-3 rounded-xl border border-transparent"><span className="block text-[10px] text-slate-400">Commute Time</span><strong className="text-white">{duration} mins</strong></div>
                     <div className="bg-slate-900/40 p-3 rounded-xl border border-transparent"><span className="block text-[10px] text-emerald-400">Rent Cost</span><strong className="text-emerald-400 text-sm">{rent}</strong></div>
                     
-                    {/* Tooltip implementation for Monthly Cost */}
                     <div className="bg-slate-900/40 p-3 rounded-xl border border-transparent relative group cursor-help hover:border-blue-900/50 transition">
                       <span className="block text-[10px] text-blue-400">Transit/mo ⓘ</span>
                       <strong className="text-blue-400">£{monthlyFare}</strong>
