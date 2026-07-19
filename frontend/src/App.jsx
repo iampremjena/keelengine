@@ -1,14 +1,13 @@
 import React, { useState, useEffect } from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate, useNavigate, useLocation } from 'react-router-dom';
 import { supabase } from './supabaseClient';
-import 'leaflet/dist/leaflet.css'; // <--- THIS FIXES THE BROKEN MAPS
+import 'leaflet/dist/leaflet.css';
 
 import AuthPage from './pages/AuthPage';
 import Dashboard from './pages/Dashboard';
-import FaqPage from './pages/FaqPage';
 import SurveyPage from './pages/SurveyPage';
 import ProfileHub from './pages/ProfileHub';
-import UpdatesPage from './pages/UpdatesPage'; // <--- Check that this matches exactly your filename 'UpdatesPage.jsx'
+import UpdatesPage from './pages/UpdatesPage';
 
 function AppContent() {
   const [session, setSession] = useState(null);
@@ -21,11 +20,7 @@ function AppContent() {
       setSession(session);
       setLoading(false);
     });
-
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
-      setSession(session);
-    });
-
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => setSession(session));
     return () => subscription.unsubscribe();
   }, []);
 
@@ -45,7 +40,6 @@ function AppContent() {
               <button onClick={() => navigate('/home')} className={`hover:text-white transition ${location.pathname === '/home' ? 'text-emerald-400' : ''}`}>Dashboard</button>
               <button onClick={() => navigate('/updates')} className={`hover:text-white transition ${location.pathname === '/updates' ? 'text-emerald-400' : ''}`}>Updates 📢</button>
               <button onClick={() => navigate('/survey')} className={`hover:text-white transition ${location.pathname === '/survey' ? 'text-emerald-400' : ''}`}>Community</button>
-              <button onClick={() => navigate('/faq')} className={`hover:text-white transition ${location.pathname === '/faq' ? 'text-emerald-400' : ''}`}>FAQ</button>
               <button onClick={() => navigate(session ? '/profile/basic' : '/')} className="relative group cursor-pointer">
                 <span className={`bg-slate-800 text-slate-300 px-4 py-2 rounded-lg text-xs font-mono hover:bg-slate-700 transition border ${session ? 'border-emerald-500/50 text-emerald-400' : 'border-slate-600'}`}>
                   {session ? `👤 Profile` : 'Guest - Click to Sign in'}
@@ -59,7 +53,6 @@ function AppContent() {
       <Routes>
         <Route path="/" element={!session ? <AuthPage /> : <Navigate to="/home" />} />
         <Route path="/home" element={<Dashboard session={session} />} />
-        <Route path="/faq" element={<FaqPage />} />
         <Route path="/updates" element={<UpdatesPage session={session} />} />
         <Route path="/survey" element={<SurveyPage session={session} />} />
         <Route path="/profile/*" element={session ? <ProfileHub session={session} /> : <Navigate to="/" />} />
