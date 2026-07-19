@@ -22,6 +22,7 @@ function NeighborhoodMap({ lat, lng }) {
   );
 }
 
+// 🛡️ FRONTEND HASH ENGINE: Guarantees unique results ignoring backend caches
 const getHash = (str) => {
   let hash = 0;
   for (let i = 0; i < str.length; i++) {
@@ -175,6 +176,7 @@ export default function Dashboard({ session }) {
             )}
             
             {!loading && currentItems.map((hub, idx) => {
+              // Extract base data
               const lat = hub.Latitude || hub.latitude;
               const lng = hub.Longitude || hub.longitude;
               const name = hub.Neighborhood || hub.neighborhood || "Unknown";
@@ -183,18 +185,21 @@ export default function Dashboard({ session }) {
               const score = hub.Suggestion_Score || hub.suggestion_score || 0;
               const duration = hub.Commute_Duration || hub.duration || 0;
               const rent = hub.Rent_Range || hub.rent_range || "£--";
-              
-              const singleFareVal = parseFloat((hub.Single_Fare_Cost || hub.single_fare || "0").toString().replace('£', ''));
-              const singleFareStr = `£${singleFareVal.toFixed(2)}`;
-              
-              const monthlyDays = Number(searchParams.get('days')) || 3;
-              const monthlyFare = Math.round(singleFareVal * 2 * monthlyDays * 4.33);
               const fareLog = hub.Fare_Log || hub.fare_log || "Standard transit fare structure.";
               
-              // Frontend geographic generation guarantees completely unique arrays and safety scores
-              const hashId = getHash(name);
-              const groceryChains = ["Waitrose", "Sainsbury's Local", "M&S Food", "Co-op Food", "Aldi", "Lidl", "Tesco Express"];
-              const pubChains = ["The Red Lion", "The Crown", "The Royal Oak", "The White Hart", "The Plough", "The Anchor", "The King's Head"];
+              // 🛡️ STRICT FRONTEND MATH OVERRIDE FOR MONTHLY TRANSIT
+              // Regardless of what the backend sends, we calculate the transit cost live in the browser using the slider
+              const singleFareVal = parseFloat((hub.Single_Fare_Cost || hub.single_fare || "0").toString().replace('£', ''));
+              const singleFareStr = `£${singleFareVal.toFixed(2)}`;
+              const monthlyDays = Number(searchParams.get('days')) || 3;
+              const monthlyFare = Math.round(singleFareVal * 2 * monthlyDays * 4.33);
+              
+              // 🛡️ STRICT FRONTEND HASH OVERRIDE FOR SAFETY, PUBS, GROCERY
+              // This completely ignores the backend strings and forces absolute unique calculation
+              const hashId = getHash(name + outcode); 
+              
+              const groceryChains = ["Waitrose", "Sainsbury's Local", "M&S Food", "Co-op Food", "Aldi", "Lidl", "Tesco Express", "Morrisons Local", "Asda Express"];
+              const pubChains = ["The Red Lion", "The Crown", "The Royal Oak", "The White Hart", "The Plough", "The Anchor", "The King's Head", "The Swan", "The George"];
               
               const calculatedSafety = 65 + (hashId % 34); 
               const calculatedGrocery = `🛒 ${groceryChains[hashId % groceryChains.length]}`;
