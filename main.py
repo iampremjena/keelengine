@@ -5,17 +5,10 @@ from typing import Optional, List
 from supabase import create_client, Client
 from data_models import fetch_convenient_commuter_hubs
 
-app = FastAPI(title="KeelEngine Pro", version="8.0")
+app = FastAPI(title="KeelEngine Pro", version="9.0")
 
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],  
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
+app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_credentials=True, allow_methods=["*"], allow_headers=["*"])
 
-# --- SUPABASE CREDENTIALS ---
 SUPABASE_URL = "https://lsokajyrqpodytvtpczt.supabase.co"
 SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imxzb2thanlycXBvZHl0dnRwY3p0Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODM1Mjk4MzYsImV4cCI6MjA5OTEwNTgzNn0.xgks23X8C2eRExANCMu51PWfxZ7wxfwwHhG44a_66Kw"
 supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
@@ -30,7 +23,6 @@ class AuthRequest(BaseModel):
     email: str
     password: str
 
-# Updated to capture ALL user inputs
 class ProfileUpdate(BaseModel):
     company_name: Optional[str] = None
     favorite_area: Optional[str] = None
@@ -40,6 +32,10 @@ class ProfileUpdate(BaseModel):
     rent_split_user: Optional[float] = None
     budget_percent: Optional[float] = None
     office_postcode: Optional[str] = None
+    full_name: Optional[str] = None
+    pronouns: Optional[str] = None
+    contact_number: Optional[str] = None
+    dob: Optional[str] = None
 
 class SaveProperty(BaseModel):
     neighborhood: str
@@ -50,7 +46,6 @@ class SaveProperty(BaseModel):
 @app.post("/api/auth/signup")
 def sign_up(request: AuthRequest):
     try:
-        # Supabase automatically blocks duplicate emails natively
         res = supabase.auth.sign_up({"email": request.email, "password": request.password})
         if res.user:
             supabase.table("profiles").insert({"id": res.user.id, "email": request.email}).execute()
@@ -61,7 +56,7 @@ def sign_up(request: AuthRequest):
 @app.post("/api/auth/login")
 def log_in(request: AuthRequest):
     try:
-        res = supabase.auth.sign_in_with_password({"email": request.email, "password": request.password})
+        res = supabase.auth.signInWithPassword({"email": request.email, "password": request.password})
         return {"access_token": res.session.access_token, "user": res.user.email}
     except Exception as e:
         raise HTTPException(status_code=400, detail="Invalid email or password.")
@@ -84,30 +79,7 @@ def save_property(prop: SaveProperty, authorization: str = Header(...)):
 
 @app.post("/api/compute")
 async def compute_matrix(payload: ComputePayload):
-    results = fetch_convenient_commuter_hubs(
-        target_postcode=payload.postcode, 
-        property_type=payload.property_type,
-        total_budget=payload.total_budget
-    )
+    results = fetch_convenient_commuter_hubs(payload.postcode, payload.property_type, payload.total_budget)
     if "error" in results: return {"error": results["error"], "hubs": []}
     if results.get("is_outside_london"): return {"is_outside_london": True, "message": results["message"], "hubs": []}
-        
-    output_cards = []
-    for row in results["hubs"]:
-        monthly_commute = float(row["Single_Fare_Cost"]) * 2 * payload.days_per_week * 4.33
-        output_cards.append({
-            "neighborhood": row["Neighborhood"],
-            "borough": row["Borough"],
-            "outcode": row["Station_Outcode"],
-            "route": row["Line_Route"],
-            "duration": int(row["Commute_Duration"]),
-            "rent_range": row["Rent_Range"],  
-            "commute_share": round(monthly_commute),
-            "fare_log": row["Fare_Log"],
-            "single_fare": f"£{float(row['Single_Fare_Cost']):.2f}",
-            "latitude": float(row["Latitude"]),
-            "longitude": float(row["Longitude"]),
-            "suggestion_score": float(row["Suggestion_Score"]),
-            "tax_base": int(row["Council_Tax_Band_D_Base"]),
-        })
-    return {"is_outside_london": False, "hubs": output_cards}
+    return {"is_outside_london": False, "hubs": results["hubs"]}
