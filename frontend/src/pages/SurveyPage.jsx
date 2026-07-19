@@ -9,7 +9,6 @@ export default function SurveyPage({ session }) {
   const [feedback, setFeedback] = useState('');
   const [submitting, setSubmitting] = useState(false);
 
-  // About the Developer State
   const defaultAbout = "Name is Prem Jena\nhttps://linkedin.com/in/iampremjena";
   const [aboutText, setAboutText] = useState(defaultAbout);
   const [isEditingDev, setIsEditingDev] = useState(false);
@@ -18,7 +17,6 @@ export default function SurveyPage({ session }) {
   const [alertConfig, setAlertConfig] = useState({ isOpen: false, title: '', message: '', type: 'success' });
   const showAlert = (title, message, type) => setAlertConfig({ isOpen: true, title, message, type });
 
-  // Security Check for Edit Privileges
   const isAdmin = session?.user?.email === 'iampremjena@gmail.com';
 
   useEffect(() => {
@@ -64,7 +62,6 @@ export default function SurveyPage({ session }) {
     <div className="max-w-4xl mx-auto px-4 py-12 flex flex-col md:flex-row gap-8">
       <AlertModal {...alertConfig} onClose={() => setAlertConfig({ ...alertConfig, isOpen: false })} />
       
-      {/* Left Column: Community Feedback */}
       <div className="w-full md:w-2/3 glass p-10 rounded-3xl shadow-2xl border border-slate-700/40">
         <h2 className="text-3xl font-black text-white mb-2 tracking-tight">Community Hub</h2>
         <p className="text-slate-400 text-sm mb-8">
@@ -86,7 +83,6 @@ export default function SurveyPage({ session }) {
         </form>
       </div>
 
-      {/* Right Column: About the Developer */}
       <div className="w-full md:w-1/3">
         <div className="glass p-8 rounded-3xl shadow-2xl border border-emerald-900/30 sticky top-8">
           <h3 className="text-xl font-black text-emerald-400 mb-4 tracking-tight">About the Developer</h3>
