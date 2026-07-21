@@ -1,11 +1,11 @@
 from fastapi import FastAPI, HTTPException, Header
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
-from typing import Optional, List
+from typing import Optional
 from supabase import create_client, Client
 from data_models import fetch_convenient_commuter_hubs
 
-app = FastAPI(title="KeelEngine Pro", version="9.0")
+app = FastAPI(title="KeelEngine Pro", version="10.0")
 
 app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_credentials=True, allow_methods=["*"], allow_headers=["*"])
 
@@ -50,16 +50,14 @@ def sign_up(request: AuthRequest):
         if res.user:
             supabase.table("profiles").insert({"id": res.user.id, "email": request.email}).execute()
             return {"message": "Account created successfully!", "user": res.user.email}
-    except Exception as e:
-        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e: raise HTTPException(status_code=400, detail=str(e))
 
 @app.post("/api/auth/login")
 def log_in(request: AuthRequest):
     try:
         res = supabase.auth.signInWithPassword({"email": request.email, "password": request.password})
         return {"access_token": res.session.access_token, "user": res.user.email}
-    except Exception as e:
-        raise HTTPException(status_code=400, detail="Invalid email or password.")
+    except Exception as e: raise HTTPException(status_code=400, detail="Invalid email or password.")
 
 @app.post("/api/profile/update")
 def update_profile(profile: ProfileUpdate, authorization: str = Header(...)):
@@ -80,6 +78,14 @@ def save_property(prop: SaveProperty, authorization: str = Header(...)):
 @app.post("/api/compute")
 async def compute_matrix(payload: ComputePayload):
     results = fetch_convenient_commuter_hubs(payload.postcode, payload.property_type, payload.total_budget)
+    
     if "error" in results: return {"error": results["error"], "hubs": []}
     if results.get("is_outside_london"): return {"is_outside_london": True, "message": results["message"], "hubs": []}
-    return {"is_outside_london": False, "hubs": results["hubs"]}
+    
+    output_cards = []
+    for row in results["hubs"]:
+        card = dict(row)
+        card["Single_Fare_Formatted"] = f"£{float(row['Single_Fare_Cost']):.2f}"
+        output_cards.append(card)
+
+    return {"is_outside_london": False, "hubs": output_cards}

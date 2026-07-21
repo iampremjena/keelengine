@@ -1,7 +1,7 @@
 import requests
 import math
 from datetime import datetime
-import random
+from functools import lru_cache
 
 COUNCIL_TAX_MATRIX = {
     "Westminster": 973, "Wandsworth": 985, "City of London": 1205, "Hammersmith and Fulham": 1386,
@@ -12,6 +12,68 @@ COUNCIL_TAX_MATRIX = {
     "Tower Hamlets": 1700, "Hackney": 1880, "Lambeth": 1950, "Hillingdon": 1850, "Hounslow": 1950, 
     "Haringey": 2100, "Waltham Forest": 2150, "Sutton": 2250, "Merton": 2100, "Bromley": 2050, 
     "Harrow": 2250, "Newham": 1750, "Default": 2000
+}
+
+# HARDCODED AMENITIES & SAFETY SCORES FOR 110+ NEIGHBORHOODS
+HARDCODED_AMENITIES = {
+    "Abbey Wood": ("Sainsbury's Local", "The Abbey Arms", 72), "Acton": ("Waitrose", "The George & Dragon", 78),
+    "Aldgate": ("Tesco Express", "The Hoop and Grapes", 81), "Angel": ("Waitrose", "The Angelic", 86),
+    "Archway": ("Aldi", "St John's Tavern", 76), "Balham": ("Waitrose", "The Bedford", 84),
+    "Bankside": ("M&S Food", "The Anchor Bankside", 85), "Barbican": ("Waitrose", "The Jugged Hare", 88),
+    "Barking": ("Asda", "The Barking Dog", 68), "Barnes": ("M&S Food", "The Sun Inn", 92),
+    "Barnet": ("Waitrose", "The Mitre", 83), "Battersea": ("Waitrose", "The Woodman", 86),
+    "Bayswater": ("Waitrose", "The Churchill Arms", 84), "Beckenham": ("Waitrose", "The George Inn", 82),
+    "Beckton": ("Asda", "The Tollgate", 69), "Belgravia": ("Waitrose", "The Thomas Cubitt", 94),
+    "Belsize Park": ("Budgens", "The Washington", 88), "Bermondsey": ("Sainsbury's Local", "The Woolpack", 81),
+    "Bethnal Green": ("Tesco Express", "The Sun Tavern", 73), "Bexleyheath": ("Asda", "The Golden Lion", 77),
+    "Blackheath": ("M&S Food", "The Princess of Wales", 86), "Bloomsbury": ("Waitrose", "The Museum Tavern", 85),
+    "Bow": ("Tesco Express", "The Bow Bells", 71), "Brentford": ("Sainsbury's", "The Magpie and Crown", 75),
+    "Brixton": ("Tesco Superstore", "The Trinity Arms", 70), "Brockley": ("Sainsbury's Local", "The Wickham Arms", 76),
+    "Bromley": ("Waitrose", "The Partridge", 81), "Camberwell": ("Morrisons", "The Camberwell Arms", 72),
+    "Camden Town": ("Sainsbury's", "The Hawley Arms", 74), "Canary Wharf": ("Waitrose", "The Gun", 89),
+    "Canning Town": ("Co-op Food", "The Durham Arms", 68), "Catford": ("Tesco", "The Catford Bridge Tavern", 70),
+    "Chelsea": ("M&S Food", "The Builders Arms", 93), "Chingford": ("Co-op Food", "The Royal Oak", 78),
+    "Chiswick": ("Waitrose", "The George IV", 88), "Clapham": ("Waitrose", "The Falcon", 83),
+    "Clerkenwell": ("Waitrose", "The Eagle", 85), "Colindale": ("Asda", "The Chandos Arms", 74),
+    "Covent Garden": ("Tesco Express", "The Lamb & Flag", 84), "Cricklewood": ("Co-op Food", "The Crown", 71),
+    "Crouch End": ("Waitrose", "The Queens", 86), "Croydon": ("Waitrose", "The Dog & Bull", 69),
+    "Crystal Palace": ("Sainsbury's", "The Westow House", 78), "Dalston": ("Sainsbury's", "The Farr's", 72),
+    "Deptford": ("Tesco Express", "The Dog & Bell", 71), "Dulwich": ("M&S Food", "The Crown & Greyhound", 89),
+    "Ealing": ("Waitrose", "The North Star", 85), "Earls Court": ("M&S Food", "The Blackbird", 83),
+    "East Ham": ("Tesco Express", "The Denmark Arms", 67), "Edgware": ("Sainsbury's", "The Change of Horses", 75),
+    "Elephant and Castle": ("Tesco Express", "The Elephant & Castle", 70), "Eltham": ("Sainsbury's", "The Rusty Bucket", 76),
+    "Enfield": ("Waitrose", "The Crown and Horseshoes", 79), "Farringdon": ("Tesco Express", "The Betsey Trotwood", 84),
+    "Finchley": ("Waitrose", "The Catcher In The Rye", 82), "Finsbury Park": ("Lidl", "The Faltering Fullback", 73),
+    "Forest Gate": ("Co-op Food", "The Forest Tavern", 72), "Forest Hill": ("Sainsbury's", "The Capitol", 77),
+    "Fulham": ("Waitrose", "The White Horse", 87), "Golders Green": ("Sainsbury's", "The Old Bull & Bush", 84),
+    "Greenwich": ("M&S Food", "The Cutty Sark", 86), "Hackney": ("Tesco Express", "The Pembury Tavern", 74),
+    "Hammersmith": ("Waitrose", "The Blue Anchor", 83), "Hampstead": ("Waitrose", "The Holly Bush", 92),
+    "Harrow": ("Tesco Superstore", "The Castle", 79), "Highbury": ("Waitrose", "The Highbury Barn", 85),
+    "Highgate": ("M&S Food", "The Flask", 90), "Holborn": ("Waitrose", "The Princess Louise", 83),
+    "Holloway": ("Waitrose", "The Swimmer at the Grafton", 75), "Hornchurch": ("Sainsbury's", "The Fatling", 80),
+    "Hounslow": ("Asda", "The Moon Under Water", 68), "Ilford": ("Sainsbury's", "The Great Spoon of Ilford", 67),
+    "Isle of Dogs": ("Asda", "The Ferry House", 82), "Islington": ("Waitrose", "The Drapers Arms", 85),
+    "Kennington": ("Tesco Express", "The Tommyfield", 78), "Kensington": ("Whole Foods", "The Churchill Arms", 91),
+    "Kentish Town": ("Sainsbury's", "The Pineapple", 79), "Kew": ("Tesco Express", "The Greyhound", 93),
+    "Kilburn": ("Aldi", "The Black Lion", 72), "King's Cross": ("Waitrose", "The Parcel Yard", 79),
+    "Kingston upon Thames": ("Waitrose", "The Ram", 86), "Lewisham": ("Tesco Superstore", "The Fox & Firkin", 71),
+    "Leyton": ("Asda", "The Leyton Technical", 72), "Marylebone": ("Waitrose", "The Barley Mow", 89),
+    "Mayfair": ("M&S Food", "The Audley", 95), "Notting Hill": ("M&S Food", "The Elgin", 88),
+    "Orpington": ("Tesco Extra", "The Maxwell", 81), "Paddington": ("Waitrose", "The Victoria", 82),
+    "Peckham": ("Morrisons", "The Prince of Peckham", 71), "Pimlico": ("Sainsbury's", "The Marquis of Westminster", 86),
+    "Poplar": ("Co-op Food", "The Ledger Building", 70), "Putney": ("Waitrose", "The Half Moon", 88),
+    "Richmond": ("Waitrose", "The White Cross", 94), "Romford": ("Asda", "The Golden Lion", 73),
+    "Rotherhithe": ("Co-op Food", "The Mayflower", 83), "Shepherd's Bush": ("Waitrose", "The Defector's Weld", 76),
+    "Shoreditch": ("Co-op Food", "The Ten Bells", 73), "Soho": ("Tesco Express", "The French House", 82),
+    "South Kensington": ("Waitrose", "The Anglesea Arms", 91), "Southwark": ("Tesco Express", "The Founders Arms", 81),
+    "Stratford": ("Waitrose", "The Cart and Horses", 74), "Streatham": ("Aldi", "The Rabbit Hole", 75),
+    "Surbiton": ("Waitrose", "The Antelope", 87), "Sutton": ("Sainsbury's", "The Cock & Bull", 80),
+    "Tooting": ("Aldi", "The Castle", 77), "Tottenham": ("Asda", "The Antwerp Arms", 68),
+    "Twickenham": ("Waitrose", "The Barmy Arms", 89), "Vauxhall": ("Sainsbury's", "The Black Dog", 79),
+    "Walthamstow": ("Lidl", "The Bell", 76), "Wandsworth": ("Waitrose", "The Ship", 85),
+    "Waterloo": ("Sainsbury's Local", "The Fire Station", 81), "Wembley": ("Asda", "The White Horse", 71),
+    "Westminster": ("Waitrose", "The Red Lion", 86), "Whitechapel": ("Sainsbury's", "The Blind Beggar", 70),
+    "Wimbledon": ("Waitrose", "The Dog & Fox", 91), "Woolwich": ("Tesco Extra", "The Dial Arch", 73)
 }
 
 RAW_LONDON_DATA = """Abbey Wood|Bexley|SE2|51.4924|0.1170|Elizabeth Line / Southeastern Rail
@@ -143,23 +205,26 @@ def calculate_haversine_distance(lat1: float, lon1: float, lat2: float, lon2: fl
 
 def round_to_100(value: float) -> int: return int(round(value / 100) * 100)
 
+# LRU Cache dramatically speeds up the search function by remembering postcodes in memory
+@lru_cache(maxsize=1024)
+def get_postcode_data(clean_input: str):
+    return requests.get(f"https://api.postcodes.io/postcodes/{clean_input}", timeout=3).json()
+
 def fetch_convenient_commuter_hubs(target_postcode: str, property_type: str, total_budget: float):
     clean_input = target_postcode.upper().replace(" ", "")
     market_multiplier = 1.0 + (max(0, datetime.now().year - 2024) + (datetime.now().month / 12.0)) * 0.045
     
     try:
-        geo_res = requests.get(f"https://api.postcodes.io/postcodes/{clean_input}", timeout=2)
-        if geo_res.status_code != 200: return {"error": "Invalid Postcode"}
-        res_data = geo_res.json()["result"]
+        geo_json = get_postcode_data(clean_input)
+        if "error" in geo_json or "result" not in geo_json: return {"error": "That postcode doesn't seem to exist. Please check your spelling."}
+        res_data = geo_json["result"]
         office_lat, office_lon, region, outward_code = res_data["latitude"], res_data["longitude"], res_data.get("region", ""), res_data.get("outcode", "London")
-    except Exception: return {"error": "Postcode service timed out. Please try again."}
+    except Exception: return {"error": "Our routing map is currently waking up. Please try searching again in 5 seconds."}
 
     if region != "London" and "London" not in res_data.get("european_electoral_region", ""):
         return {"is_outside_london": True, "message": f"{outward_code}"}
 
     computed_cards = []
-    local_chains = ["Waitrose", "Sainsbury's Local", "M&S Food", "Co-op Food", "Aldi", "Lidl", "Tesco Express"]
-    local_pubs = ["The Red Lion", "The Crown", "The Royal Oak", "The White Hart", "The Plough", "The Anchor", "The King's Head"]
 
     for hub in PARSED_HUBS:
         d_office = calculate_haversine_distance(hub["lat"], hub["lon"], office_lat, office_lon)
@@ -187,15 +252,17 @@ def fetch_convenient_commuter_hubs(target_postcode: str, property_type: str, tot
         if rent_lower > (total_budget + 400): continue 
         
         score = round(max(5.0, 100.0 - (duration * 1.5) - (fare * 4.5)), 1)
-        safety_idx = max(65, 100 - (int(hub["lat"] * 1000) % 15) - (int(hub["lon"] * 1000) % 12)) # Highly optimized Geo-Hash Safety Determinant
         
+        # PULL FROM HARDCODED DICTIONARY
+        amenities = HARDCODED_AMENITIES.get(hub["name"], ("🛒 Local Grocer", "🍻 The Local Pub", 75))
+
         computed_cards.append({
             "Neighborhood": hub["name"], "Borough": hub["borough"], "Station_Outcode": hub["outcode"], "Line_Route": route,
             "Commute_Duration": duration, "Rent_Range": f"£{rent_lower:,} - £{rent_upper:,}",
-            "Single_Fare_Cost": f"£{fare:.2f}", "Fare_Log": log, "Latitude": hub["lat"], "Longitude": hub["lon"],
+            "Single_Fare_Cost": float(fare), "Fare_Log": log, "Latitude": hub["lat"], "Longitude": hub["lon"],
             "Suggestion_Score": score, "Council_Tax_Band_D_Base": COUNCIL_TAX_MATRIX.get(hub["borough"], 2000),
-            "Nearest_Grocery": f"🛒 {random.choice(local_chains)}", "Nearest_Pub": f"🍻 {random.choice(local_pubs)}",
-            "Safety_Score": safety_idx
+            "Nearest_Grocery": f"🛒 {amenities[0]}", "Nearest_Pub": f"🍻 {amenities[1]}",
+            "Safety_Score": amenities[2]
         })
 
     computed_cards.sort(key=lambda x: x["Suggestion_Score"], reverse=True)

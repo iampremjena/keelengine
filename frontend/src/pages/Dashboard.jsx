@@ -22,15 +22,6 @@ function NeighborhoodMap({ lat, lng }) {
   );
 }
 
-const getHash = (str) => {
-  let hash = 0;
-  for (let i = 0; i < str.length; i++) {
-    hash = (hash << 5) - hash + str.charCodeAt(i);
-    hash |= 0;
-  }
-  return Math.abs(hash);
-};
-
 export default function Dashboard({ session }) {
   useEffect(() => { document.title = "KeelEngine | Search"; }, []);
 
@@ -175,7 +166,6 @@ export default function Dashboard({ session }) {
             )}
             
             {!loading && currentItems.map((hub, idx) => {
-              // Extraction
               const lat = hub.Latitude || hub.latitude;
               const lng = hub.Longitude || hub.longitude;
               const name = hub.Neighborhood || hub.neighborhood || `Option ${idx + 1}`;
@@ -185,24 +175,17 @@ export default function Dashboard({ session }) {
               const duration = hub.Commute_Duration || hub.duration || 0;
               const rent = hub.Rent_Range || hub.rent_range || "£--";
               
-              // Transit Cost Math
+              // Frontend UI calculation for monthly transit cost tied exactly to the slider state
               const singleFareVal = parseFloat((hub.Single_Fare_Cost || hub.single_fare || "0").toString().replace('£', ''));
               const singleFareStr = `£${singleFareVal.toFixed(2)}`;
               const monthlyDays = Number(searchParams.get('days')) || 3;
               const monthlyFare = Math.round(singleFareVal * 2 * monthlyDays * 4.33);
               const fareLog = hub.Fare_Log || hub.fare_log || "Standard transit fare structure.";
               
-              // 🛡️ THE FIX: Force inject the Map Index (idx) into the hash to guarantee variety!
-              const forceUniqueBase = name + outcode + (idx * 7) + currentPage;
-              const hashId = getHash(forceUniqueBase); 
-              
-              const groceryChains = ["Waitrose", "Sainsbury's Local", "M&S Food", "Co-op Food", "Aldi", "Lidl", "Tesco Express", "Morrisons Local", "Asda Express"];
-              const pubChains = ["The Red Lion", "The Crown", "The Royal Oak", "The White Hart", "The Plough", "The Anchor", "The King's Head", "The Swan", "The George"];
-              
-              // Mathematically impossible to repeat endlessly now
-              const calculatedSafety = 65 + (hashId % 34); 
-              const calculatedGrocery = `🛒 ${groceryChains[hashId % groceryChains.length]}`;
-              const calculatedPub = `🍻 ${pubChains[(hashId + 3) % pubChains.length]}`; // Offset the pub hash so it doesn't match the grocery pattern
+              // Reads the explicitly hardcoded text sent securely from the backend
+              const safety = hub.Safety_Score || hub.safety_score;
+              const grocery = hub.Nearest_Grocery || hub.nearest_grocery;
+              const pub = hub.Nearest_Pub || hub.nearest_pub;
 
               return (
                 <div key={idx} className="glass rounded-3xl p-6 shadow-xl border border-slate-700/40 hover:border-slate-500/50 transition">
@@ -232,13 +215,13 @@ export default function Dashboard({ session }) {
                       </div>
                     </div>
 
-                    <div className="bg-slate-900/40 p-3 rounded-xl border border-transparent"><span className="block text-[10px] text-amber-400">Safety Rating</span><strong className="text-amber-400">{calculatedSafety}/100</strong></div>
+                    <div className="bg-slate-900/40 p-3 rounded-xl border border-transparent"><span className="block text-[10px] text-amber-400">Safety Rating</span><strong className="text-amber-400">{safety}/100</strong></div>
                   </div>
 
                   <div className="flex gap-4 text-xs font-mono text-slate-400 bg-slate-900/30 p-3 rounded-xl mb-5">
-                    <span>{calculatedGrocery}</span>
+                    <span>{grocery}</span>
                     <span>|</span>
-                    <span>{calculatedPub}</span>
+                    <span>{pub}</span>
                   </div>
 
                   <div className="flex gap-4 items-center">
