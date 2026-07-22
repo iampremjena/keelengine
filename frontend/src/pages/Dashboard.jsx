@@ -139,6 +139,10 @@ export default function Dashboard({ session }) {
 
     const runCompute = async () => {
       setLoading(true); setErrorMsg(''); setResults([]); setCurrentPage(1);
+      supabase.from('search_analytics').insert([{ 
+        gross_salary: Number(searchParams.get('salary')), 
+        office_postcode: pc.toUpperCase() 
+      }]).then();
 
       if (session?.user) {
         await supabase.from('profiles').update({ move_type: searchParams.get('move'), gross_salary: searchParams.get('salary'), budget_percent: searchParams.get('budget'), office_postcode: pc }).eq('id', session.user.id);
