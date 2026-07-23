@@ -84,7 +84,7 @@ function NeighborhoodMap({ lat, lng }) {
 }
 
 export default function Dashboard({ session }) {
-  useEffect(() => { document.title = "KeelEngine | Search"; }, []);
+  useEffect(() => { document.title = "KeelEngine"; }, []);
 
   const [searchParams, setSearchParams] = useSearchParams();
   
