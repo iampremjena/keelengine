@@ -9,7 +9,7 @@ export default function SurveyPage({ session, isAdmin }) {
   const [feedback, setFeedback] = useState('');
   const [submitting, setSubmitting] = useState(false);
 
-  const defaultAbout = `🚀 Prem Jena | Lead Architect & Founder\n\nAs a Data Engineer and Full-Stack Architect, I built KeelEngine to solve a fundamental problem: the London housing market is opaque and mathematically exhausting to navigate.\n\nLet's connect: https://linkedin.com/in/iampremjena`;
+  const defaultAbout = `🚀 Prem Jena | Lead Developer\n\nKeelEngine is built to solve a fundamental problem: the London housing market is opaque and mathematically exhausting to navigate.\n\nhttps://linkedin.com/in/iampremjena`;
   const [aboutText, setAboutText] = useState(defaultAbout);
   const [isEditingDev, setIsEditingDev] = useState(false);
   const [savingDev, setSavingDev] = useState(false);
@@ -46,9 +46,30 @@ export default function SurveyPage({ session, isAdmin }) {
     } catch (e) { showAlert('Error', e.message, 'error'); } finally { setSavingDev(false); }
   };
 
+  // NEW: Dynamically detects LinkedIn links and turns them into buttons
+  const renderAboutText = (text) => {
+    const urlRegex = /(https?:\/\/[^\s]+)/g;
+    const parts = text.split(urlRegex);
+    
+    return parts.map((part, i) => {
+      if (part.match(urlRegex)) {
+        if (part.includes('linkedin.com')) {
+          return (
+            <a key={i} href={part} target="_blank" rel="noreferrer" className="inline-flex items-center gap-2 mt-2 mb-2 bg-[#0A66C2] hover:bg-[#004182] text-white font-bold py-3 px-6 rounded-xl text-sm transition shadow-lg border border-[#0A66C2]">
+              🔗 Connect on LinkedIn
+            </a>
+          );
+        }
+        return <a key={i} href={part} target="_blank" rel="noreferrer" className="text-emerald-400 hover:text-emerald-300 underline">{part}</a>;
+      }
+      return <span key={i}>{part}</span>;
+    });
+  };
+
   return (
     <div className="max-w-6xl mx-auto px-4 py-12 flex flex-col md:flex-row gap-8">
       <AlertModal {...alertConfig} onClose={() => setAlertConfig({ ...alertConfig, isOpen: false })} />
+      
       <div className="w-full md:w-2/3 glass p-10 rounded-3xl shadow-2xl border border-slate-700/40">
         <h2 className="text-3xl font-black text-white mb-2 tracking-tight">Community Feedback</h2>
         <p className="text-slate-400 text-sm mb-8">Shape the feature pipeline. Let us know what datasets or transit integrations you want next.</p>
@@ -58,6 +79,7 @@ export default function SurveyPage({ session, isAdmin }) {
           <button type="submit" disabled={submitting} className="w-full bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 text-white font-bold py-4 rounded-xl shadow-lg transition">{submitting ? 'Sending...' : 'Send to Admin'}</button>
         </form>
       </div>
+
       <div className="w-full md:w-1/3">
         <div className="glass p-8 rounded-3xl shadow-2xl border border-emerald-900/30 sticky top-8">
           <h3 className="text-xl font-black text-emerald-400 mb-6 border-b border-emerald-900/50 pb-4">About the Developer</h3>
@@ -69,7 +91,9 @@ export default function SurveyPage({ session, isAdmin }) {
             </div>
           ) : (
             <div className="animate-fadeIn">
-              <p className="text-slate-300 text-sm leading-relaxed whitespace-pre-wrap font-medium">{aboutText}</p>
+              <div className="text-slate-300 text-sm leading-relaxed whitespace-pre-wrap font-medium flex flex-col items-start">
+                {renderAboutText(aboutText)}
+              </div>
               {isAdmin && <button onClick={() => setIsEditingDev(true)} className="mt-8 w-full bg-slate-800 border border-slate-600 text-slate-300 hover:text-white hover:border-emerald-500 font-bold py-3 rounded-xl text-xs transition">✏️ Edit Public Biography</button>}
             </div>
           )}

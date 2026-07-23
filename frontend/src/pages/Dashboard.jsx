@@ -10,7 +10,6 @@ import markerShadow from 'leaflet/dist/images/marker-shadow.png';
 let DefaultIcon = L.icon({ iconUrl: markerIcon, shadowUrl: markerShadow, iconSize: [25, 41], iconAnchor: [12, 41] });
 L.Marker.prototype.options.icon = DefaultIcon;
 
-// 🛡️ HARDCODED AMENITIES MOVED DIRECTLY TO FRONTEND TO BYPASS BACKEND ERRORS
 const HARDCODED_AMENITIES = {
   "Abbey Wood": ["Sainsbury's Local", "The Abbey Arms", 72], "Acton": ["Waitrose", "The George & Dragon", 78],
   "Aldgate": ["Tesco Express", "The Hoop and Grapes", 81], "Angel": ["Waitrose", "The Angelic", 86],
@@ -139,6 +138,7 @@ export default function Dashboard({ session }) {
 
     const runCompute = async () => {
       setLoading(true); setErrorMsg(''); setResults([]); setCurrentPage(1);
+
       supabase.from('search_analytics').insert([{ 
         gross_salary: Number(searchParams.get('salary')), 
         office_postcode: pc.toUpperCase() 
@@ -232,7 +232,6 @@ export default function Dashboard({ session }) {
             )}
             
             {!loading && currentItems.map((hub, idx) => {
-              // Extract Standard Base Values
               const lat = hub.Latitude || hub.latitude;
               const lng = hub.Longitude || hub.longitude;
               const name = hub.Neighborhood || hub.neighborhood || "Unknown";
@@ -242,15 +241,15 @@ export default function Dashboard({ session }) {
               const duration = hub.Commute_Duration || hub.duration || 0;
               const rent = hub.Rent_Range || hub.rent_range || "£--";
               
-              // Local Transit Math
+              // New Commute Route Extraction
+              const commuteRoute = hub.Line_Route || hub.line_route || "Standard Route";
+              
               const singleFareVal = parseFloat((hub.Single_Fare_Cost || hub.single_fare || "0").toString().replace('£', ''));
               const singleFareStr = `£${singleFareVal.toFixed(2)}`;
               const monthlyDays = Number(searchParams.get('days')) || 3;
               const monthlyFare = Math.round(singleFareVal * 2 * monthlyDays * 4.33);
               const fareLog = hub.Fare_Log || hub.fare_log || "Standard transit fare structure.";
               
-              // 🛡️ THE BULLETPROOF FRONTEND LOOKUP
-              // Directly grabs the hardcoded array in React, guaranteeing results instantly
               const amenities = HARDCODED_AMENITIES[name] || ["Local Grocer", "The Red Lion", 75];
               const grocery = `🛒 ${amenities[0]}`;
               const pub = `🍻 ${amenities[1]}`;
@@ -272,7 +271,17 @@ export default function Dashboard({ session }) {
                   <NeighborhoodMap lat={lat} lng={lng} />
 
                   <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-5">
-                    <div className="bg-slate-900/40 p-3 rounded-xl border border-transparent"><span className="block text-[10px] text-slate-400">Commute Time</span><strong className="text-white">{duration} mins</strong></div>
+                    
+                    {/* NEW: Commute Breakdown Tooltip */}
+                    <div className="bg-slate-900/40 p-3 rounded-xl border border-transparent relative group cursor-help hover:border-emerald-900/50 transition">
+                      <span className="block text-[10px] text-slate-400">Commute Time ⓘ</span>
+                      <strong className="text-white">{duration} mins</strong>
+                      <div className="hidden group-hover:block absolute bottom-full left-0 mb-2 w-56 bg-slate-800 border border-emerald-700 p-4 rounded-xl text-xs z-50 shadow-2xl">
+                        <span className="text-slate-200 block mb-1">Suggested Route:</span>
+                        <span className="text-emerald-400 font-medium text-[11px] leading-relaxed block">{commuteRoute}</span>
+                      </div>
+                    </div>
+
                     <div className="bg-slate-900/40 p-3 rounded-xl border border-transparent"><span className="block text-[10px] text-emerald-400">Rent Cost</span><strong className="text-emerald-400 text-sm">{rent}</strong></div>
                     
                     <div className="bg-slate-900/40 p-3 rounded-xl border border-transparent relative group cursor-help hover:border-blue-900/50 transition">
