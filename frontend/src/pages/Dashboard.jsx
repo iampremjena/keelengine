@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { useSearchParams } from 'react-router-dom';
+import { useSearchParams, useNavigate } from 'react-router-dom';
 import { supabase } from '../supabaseClient';
 import AlertModal from '../components/AlertModal';
 import { MapContainer, TileLayer, Marker } from 'react-leaflet';
@@ -84,7 +84,8 @@ function NeighborhoodMap({ lat, lng }) {
 }
 
 export default function Dashboard({ session }) {
-  useEffect(() => { document.title = "KeelEngine"; }, []);
+  const navigate = useNavigate();
+  useEffect(() => { document.title = "KeelEngine | Search"; }, []);
 
   const [searchParams, setSearchParams] = useSearchParams();
   
@@ -102,6 +103,8 @@ export default function Dashboard({ session }) {
   const itemsPerPage = 5;
 
   const [alertConfig, setAlertConfig] = useState({ isOpen: false, title: '', message: '', type: 'success' });
+  const [showSurveyModal, setShowSurveyModal] = useState(false);
+  
   const showAlert = (title, message, type) => setAlertConfig({ isOpen: true, title, message, type });
 
   const hasSearched = searchParams.has('postcode');
@@ -146,6 +149,16 @@ export default function Dashboard({ session }) {
 
       if (session?.user) {
         await supabase.from('profiles').update({ move_type: searchParams.get('move'), gross_salary: searchParams.get('salary'), budget_percent: searchParams.get('budget'), office_postcode: pc }).eq('id', session.user.id);
+        
+        // 🛡️ FIRST-TIME SEARCH POPUP LOGIC
+        const hasPrompted = localStorage.getItem(`survey_prompted_${session.user.id}`);
+        if (!hasPrompted) {
+          localStorage.setItem(`survey_prompted_${session.user.id}`, 'true');
+          // Wait 3 seconds so they can see their results loading before popping the modal
+          setTimeout(() => {
+            setShowSurveyModal(true);
+          }, 3000);
+        }
       }
 
       try {
@@ -184,9 +197,41 @@ export default function Dashboard({ session }) {
   const totalPages = Math.ceil((results || []).length / itemsPerPage);
 
   return (
-    <div className="max-w-7xl mx-auto px-4 py-12 min-h-[85vh] flex flex-col justify-center relative z-10">
+    <div className="max-w-7xl mx-auto px-4 py-8 min-h-[85vh] flex flex-col justify-start relative z-10">
       <AlertModal {...alertConfig} onClose={() => setAlertConfig({ ...alertConfig, isOpen: false })} />
       
+      {/* 🛡️ PERSISTENT TOP SURVEY BANNER */}
+      <div className="w-full bg-emerald-950/40 border border-emerald-500/30 rounded-2xl p-5 mb-8 flex flex-col sm:flex-row justify-between items-center gap-4 shadow-xl">
+         <div className="text-center sm:text-left">
+           <h3 className="text-emerald-400 font-black text-lg tracking-tight">Help us improve KeelEngine! 🚀</h3>
+           <p className="text-sm text-slate-300 mt-1">Take our 60-second survey and unlock a <strong className="text-white">2-Month LinkedIn Premium trial</strong>.</p>
+         </div>
+         <button onClick={() => navigate('/about')} className="bg-emerald-600 hover:bg-emerald-500 text-white font-bold py-3 px-8 rounded-xl transition text-sm shadow-md whitespace-nowrap">
+           Take the Survey
+         </button>
+      </div>
+
+      {/* 🛡️ FIRST-SEARCH POPUP MODAL */}
+      {showSurveyModal && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-950/80 backdrop-blur-md px-4 animate-fadeIn">
+           <div className="bg-slate-900 border border-emerald-500/50 p-8 rounded-3xl shadow-2xl max-w-md w-full text-center">
+              <span className="text-6xl block mb-4">🎁</span>
+              <h2 className="text-2xl font-black text-white mb-2 tracking-tight">Claim Your Reward!</h2>
+              <p className="text-slate-300 text-sm mb-8 leading-relaxed">
+                Since you've run your first search, we'd love to hear your thoughts. Complete a quick 60-second survey to help us optimize our dataset, and we'll give you <strong>2 Months of LinkedIn Premium</strong> for free!
+              </p>
+              <div className="flex flex-col gap-3">
+                <button onClick={() => navigate('/about')} className="w-full bg-emerald-600 hover:bg-emerald-500 text-white font-bold py-4 rounded-xl shadow-lg transition tracking-wide text-sm">
+                  Take Survey Now
+                </button>
+                <button onClick={() => setShowSurveyModal(false)} className="w-full bg-slate-800 hover:bg-slate-700 border border-slate-600 text-slate-300 font-bold py-4 rounded-xl transition text-sm">
+                  Maybe Later
+                </button>
+              </div>
+           </div>
+        </div>
+      )}
+
       <div className={`flex flex-col lg:flex-row gap-8 transition-all duration-700 ease-in-out ${!hasSearched ? 'justify-center items-center' : 'items-start'}`}>
         
         <div className={`w-full transition-all duration-700 ${!hasSearched ? 'max-w-xl' : 'lg:w-1/3 sticky top-8'}`}>
@@ -241,9 +286,7 @@ export default function Dashboard({ session }) {
               const duration = hub.Commute_Duration || hub.duration || 0;
               const rent = hub.Rent_Range || hub.rent_range || "£--";
               
-              // New Commute Route Extraction
               const commuteRoute = hub.Line_Route || hub.line_route || "Standard Route";
-              
               const singleFareVal = parseFloat((hub.Single_Fare_Cost || hub.single_fare || "0").toString().replace('£', ''));
               const singleFareStr = `£${singleFareVal.toFixed(2)}`;
               const monthlyDays = Number(searchParams.get('days')) || 3;
@@ -272,7 +315,6 @@ export default function Dashboard({ session }) {
 
                   <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-5">
                     
-                    {/* NEW: Commute Breakdown Tooltip */}
                     <div className="bg-slate-900/40 p-3 rounded-xl border border-transparent relative group cursor-help hover:border-emerald-900/50 transition">
                       <span className="block text-[10px] text-slate-400">Commute Time ⓘ</span>
                       <strong className="text-white">{duration} mins</strong>
