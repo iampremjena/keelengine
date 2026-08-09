@@ -2,17 +2,10 @@ import React, { useState, useEffect } from 'react';
 import { supabase } from '../supabaseClient';
 import AlertModal from '../components/AlertModal';
 
-const PROMO_LINK_POOL = [
-  "http://www.linkedin.com/premium/redeem/?upsellOrderOrigin=premium_referrals_homepage_identity_1_sided_entry&coupon=xKAEbVjyf&customKey=ref_c&redeemTypeV2=REFERRAL_COUPON",
-  "http://www.linkedin.com/premium/redeem/?upsellOrderOrigin=premium_referrals_homepage_identity_1_sided_entry&coupon=xFS-2ZQHT&customKey=ref_c&redeemTypeV2=REFERRAL_COUPON",
-  "http://www.linkedin.com/premium/redeem/?upsellOrderOrigin=premium_referrals_homepage_identity_1_sided_entry&coupon=xaMWed5hk&customKey=ref_c&redeemTypeV2=REFERRAL_COUPON",
-  "http://www.linkedin.com/premium/redeem/?upsellOrderOrigin=premium_referrals_homepage_identity_1_sided_entry&coupon=xZkBxVRRi&customKey=ref_c&redeemTypeV2=REFERRAL_COUPON",
-  "http://www.linkedin.com/premium/redeem/?upsellOrderOrigin=premium_referrals_homepage_identity_1_sided_entry&coupon=xwiuvFpVJ&customKey=ref_c&redeemTypeV2=REFERRAL_COUPON"
-];
-
 export default function SurveyPage({ session }) {
   useEffect(() => { document.title = "KeelEngine | Research Survey"; }, []);
 
+  // Form Selection States
   const [currentBorough, setCurrentBorough] = useState('');
   const [movingTimeline, setMovingTimeline] = useState('');
   const [propertyType, setPropertyType] = useState('');
@@ -23,7 +16,8 @@ export default function SurveyPage({ session }) {
   const [workModel, setWorkModel] = useState('');
   const [desiredFeatures, setDesiredFeatures] = useState([]);
 
-  const [surveyStatus, setSurveyStatus] = useState('idle');
+  // Claim & Display States
+  const [surveyStatus, setSurveyStatus] = useState('idle'); // idle | submitting | completed | claiming | claimed
   const [claimedReward, setClaimedReward] = useState('');
   const [acceptedTandC, setAcceptedTandC] = useState(false);
   const [copied, setCopied] = useState(false);
@@ -58,9 +52,12 @@ export default function SurveyPage({ session }) {
     return true;
   };
 
+  // STEP 1: Log feedback to Database
   const handleSurveySubmit = async (e) => {
     e.preventDefault();
     if (!validateFormSelections()) return;
+
+    setSurveyStatus('submitting');
 
     const fullFeedback = `[BOROUGH]: ${currentBorough}\n[TIMELINE]: ${movingTimeline}\n[PROPERTY]: ${propertyType}\n[BUDGET]: ${housingBudget}\n[COMMUTE TOLERANCE]: ${commuteTolerance}\n[PRIORITY]: ${primaryPriority}\n[PAIN POINT]: ${commutePainPoint}\n[WORK MODEL]: ${workModel}\n[FEATURES]: ${desiredFeatures.join(', ')}`;
     const userEmail = session?.user?.email || 'Anonymous Guest';
@@ -68,30 +65,58 @@ export default function SurveyPage({ session }) {
     const { error } = await supabase.from('user_feedback').insert([{ email: userEmail, feedback_text: fullFeedback }]);
 
     if (error) {
-      console.error("Supabase insert error:", error);
-      showAlert("Database Warning", `Feedback submission notice: ${error.message}. Proceeding to reward...`, "error");
+      console.error("Feedback Insert Error:", error);
+      showAlert("Database Warning", `Could not record feedback: ${error.message}`, "error");
     }
 
     setSurveyStatus('completed');
   };
 
-  const handleClaimReward = () => {
+  // STEP 2: Claim unique link directly from Database
+  const handleClaimReward = async () => {
     if (!acceptedTandC) return showAlert("Action Required", "You must accept the Terms & Conditions to unlock the link.", "error");
 
-    const claimedIndices = JSON.parse(localStorage.getItem('keel_claimed_links') || '[]');
-    let availableIndex = PROMO_LINK_POOL.findIndex((_, idx) => !claimedIndices.includes(idx));
+    setSurveyStatus('claiming');
 
-    if (availableIndex === -1) {
-      availableIndex = Math.floor(Math.random() * PROMO_LINK_POOL.length);
-    } else {
-      claimedIndices.push(availableIndex);
-      localStorage.setItem('keel_claimed_links', JSON.stringify(claimedIndices));
+    try {
+      // Fetch 1 unused code from linkedin_rewards table
+      const { data: availableLinks, error: fetchErr } = await supabase
+        .from('linkedin_rewards')
+        .select('*')
+        .eq('is_used', false)
+        .limit(1);
+
+      if (fetchErr) throw fetchErr;
+
+      if (!availableLinks || availableLinks.length === 0) {
+        showAlert("Pool Empty", "All database codes have been claimed. Admin will reach out shortly!", "error");
+        setSurveyStatus('completed');
+        return;
+      }
+
+      const selectedReward = availableLinks[0];
+
+      // Mark the link as used by current user
+      if (session?.user?.id) {
+        await supabase
+          .from('linkedin_rewards')
+          .update({
+            is_used: true,
+            assigned_to_user_id: session.user.id,
+            claimed_at: new Date().toISOString()
+          })
+          .eq('id', selectedReward.id);
+      }
+
+      setClaimedReward(selectedReward.promo_link);
+      setSurveyStatus('claimed');
+      showAlert("🎉 Reward Unlocked!", "Your 2-Month LinkedIn Premium referral link is ready below!", "success");
+
+    } catch (err) {
+      console.error("Claim reward exception:", err);
+      showAlert("Claim Error", err.message || "Failed to fetch reward link from database.", "error");
+      setSurveyStatus('completed');
     }
-
-    const selectedLink = PROMO_LINK_POOL[availableIndex];
-    setClaimedReward(selectedLink);
-    setSurveyStatus('claimed');
-    showAlert("🎉 Reward Unlocked!", "Your 2-Month LinkedIn Premium referral link is ready below!", "success");
   };
 
   const copyToClipboard = () => {
@@ -126,7 +151,8 @@ export default function SurveyPage({ session }) {
           </div>
         </div>
 
-        {surveyStatus === 'idle' && (
+        {/* SURVEY FORM */}
+        {(surveyStatus === 'idle' || surveyStatus === 'submitting') && (
           <form onSubmit={handleSurveySubmit} className="space-y-8 text-left">
             <div>
               <label className="block text-sm font-bold text-emerald-400 uppercase tracking-wider mb-3">1. Where do you currently live?</label>
@@ -231,11 +257,14 @@ export default function SurveyPage({ session }) {
               </div>
             </div>
 
-            <button type="submit" className="w-full bg-emerald-600 hover:bg-emerald-500 text-white font-bold py-4 rounded-xl shadow-xl transition text-sm">Submit 2-Minute Survey</button>
+            <button type="submit" disabled={surveyStatus === 'submitting'} className="w-full bg-emerald-600 hover:bg-emerald-500 text-white font-bold py-4 rounded-xl shadow-xl transition text-sm">
+              {surveyStatus === 'submitting' ? 'Uploading Feedback...' : 'Submit 2-Minute Survey'}
+            </button>
           </form>
         )}
 
-        {surveyStatus === 'completed' && (
+        {/* T&C ACCEPTANCE */}
+        {(surveyStatus === 'completed' || surveyStatus === 'claiming') && (
           <div className="bg-slate-900/80 border border-emerald-500/40 p-8 rounded-2xl text-center animate-fadeIn">
             <span className="text-5xl block mb-4">✅</span>
             <h3 className="text-2xl font-black text-white mb-2">Survey Complete!</h3>
@@ -249,17 +278,18 @@ export default function SurveyPage({ session }) {
                   <strong className="text-white">Terms & Conditions:</strong> I confirm that I currently do not have an active LinkedIn Premium subscription, and I have not used a free trial on my account in the recent past.
                 </span>
               </label>
-              <button onClick={handleClaimReward} disabled={!acceptedTandC} className={`w-full font-black py-4 px-8 rounded-xl text-sm transition shadow-xl ${acceptedTandC ? 'bg-[#0A66C2] hover:bg-[#004182] text-white' : 'bg-slate-800 text-slate-500 cursor-not-allowed'}`}>
-                Unlock 2 Months LinkedIn Premium
+              <button onClick={handleClaimReward} disabled={!acceptedTandC || surveyStatus === 'claiming'} className={`w-full font-black py-4 px-8 rounded-xl text-sm transition shadow-xl ${acceptedTandC ? 'bg-[#0A66C2] hover:bg-[#004182] text-white' : 'bg-slate-800 text-slate-500 cursor-not-allowed'}`}>
+                {surveyStatus === 'claiming' ? 'Fetching Database Link...' : 'Unlock 2 Months LinkedIn Premium'}
               </button>
             </div>
           </div>
         )}
 
+        {/* REWARD DISPLAY */}
         {surveyStatus === 'claimed' && (
           <div className="bg-slate-900/80 border border-emerald-500/40 p-8 rounded-2xl text-center animate-fadeIn">
             <span className="text-5xl block mb-4">🎉</span>
-            <h3 className="text-2xl font-black text-white mb-2">Your Referral Link is Ready!</h3>
+            <h3 className="text-2xl font-black text-white mb-2">Your Database Link is Ready!</h3>
             <p className="text-slate-400 text-sm mb-8">Copy the link below or click the button to open LinkedIn directly.</p>
             
             <div className="bg-slate-950 p-6 rounded-2xl border border-slate-800 text-left">
