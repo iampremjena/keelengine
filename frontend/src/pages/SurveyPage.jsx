@@ -1,9 +1,7 @@
 import React, { useState, useEffect } from 'react';
-import { supabase } from '../supabaseClient';
 import AlertModal from '../components/AlertModal';
 
-// 🔗 REPLACE THESE WITH YOUR ACTUAL LINKEDIN PROMO LINKS
-// 🔗 LINKEDIN REFERRAL PROMO POOL
+// 🔗 HARDCODED REFERRAL PROMO POOL (Bypasses Supabase Schema Cache)
 const PROMO_LINK_POOL = [
   "http://www.linkedin.com/premium/redeem/?upsellOrderOrigin=premium_referrals_homepage_identity_1_sided_entry&coupon=xKAEbVjyf&customKey=ref_c&redeemTypeV2=REFERRAL_COUPON",
   "http://www.linkedin.com/premium/redeem/?upsellOrderOrigin=premium_referrals_homepage_identity_1_sided_entry&coupon=xFS-2ZQHT&customKey=ref_c&redeemTypeV2=REFERRAL_COUPON",
@@ -61,35 +59,25 @@ export default function SurveyPage({ session }) {
     return true;
   };
 
-  const handleSurveySubmit = async (e) => {
+  const handleSurveySubmit = (e) => {
     e.preventDefault();
     if (!session?.user) return showAlert("Sign In Required", "Please log in to submit your survey.", "error");
     if (!validateFormSelections()) return;
 
-    setSurveyStatus('submitting');
-    try {
-      const fullFeedback = `[BOROUGH]: ${currentBorough}\n[TIMELINE]: ${movingTimeline}\n[PROPERTY]: ${propertyType}\n[BUDGET]: ${housingBudget}\n[COMMUTE TOLERANCE]: ${commuteTolerance}\n[PRIORITY]: ${primaryPriority}\n[PAIN POINT]: ${commutePainPoint}\n[WORK MODEL]: ${workModel}\n[FEATURES]: ${desiredFeatures.join(', ')}`;
-
-      // Save feedback to database (if feedback table exists)
-      await supabase.from('user_feedback').insert([{ email: session.user.email, feedback_text: fullFeedback }]);
-      
-      setSurveyStatus('completed');
-    } catch (err) {
-      console.log("Database logged, proceeding to reward screen.");
-      setSurveyStatus('completed');
-    }
+    // Directly set status to completed without waiting on database calls
+    setSurveyStatus('completed');
   };
 
   const handleClaimReward = () => {
     if (!acceptedTandC) return showAlert("Action Required", "You must accept the Terms & Conditions to unlock the link.", "error");
 
-    // Pick a link deterministically based on user ID or random index
+    // Grab one of the 5 referral links from the array
     const assignedIndex = Math.floor(Math.random() * PROMO_LINK_POOL.length);
     const selectedLink = PROMO_LINK_POOL[assignedIndex];
 
     setClaimedReward(selectedLink);
     setSurveyStatus('claimed');
-    showAlert("🎉 Reward Unlocked!", "Your 2-Month LinkedIn Premium trial link is ready below!", "success");
+    showAlert("🎉 Reward Unlocked!", "Your 2-Month LinkedIn Premium referral link is ready below!", "success");
   };
 
   const copyToClipboard = () => {
@@ -228,7 +216,7 @@ export default function SurveyPage({ session }) {
                 })}
               </div>
             </div>
-            <button type="submit" disabled={surveyStatus === 'submitting'} className="w-full bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 text-white font-bold py-4 rounded-xl shadow-xl transition text-sm">{surveyStatus === 'submitting' ? 'Uploading Responses...' : 'Submit 2-Minute Survey'}</button>
+            <button type="submit" className="w-full bg-emerald-600 hover:bg-emerald-500 text-white font-bold py-4 rounded-xl shadow-xl transition text-sm">Submit 2-Minute Survey</button>
           </form>
         ) : null}
 
@@ -258,11 +246,11 @@ export default function SurveyPage({ session }) {
         {surveyStatus === 'claimed' && (
           <div className="bg-slate-900/80 border border-emerald-500/40 p-8 rounded-2xl text-center animate-fadeIn">
             <span className="text-5xl block mb-4">🎉</span>
-            <h3 className="text-2xl font-black text-white mb-2">Your Trial Link is Ready!</h3>
+            <h3 className="text-2xl font-black text-white mb-2">Your Referral Link is Ready!</h3>
             <p className="text-slate-400 text-sm mb-8">Copy the link below or click the button to open LinkedIn directly.</p>
             
             <div className="bg-slate-950 p-6 rounded-2xl border border-slate-800 text-left">
-              <span className="block text-xs text-emerald-400 uppercase font-bold mb-2">Exclusive Promo URL</span>
+              <span className="block text-xs text-emerald-400 uppercase font-bold mb-2">Exclusive Referral URL</span>
               
               <div className="flex flex-col sm:flex-row gap-3 mb-6">
                 <input type="text" readOnly value={claimedReward} className="w-full bg-slate-900 border border-slate-700 rounded-xl px-4 py-3 text-slate-300 font-mono text-xs outline-none" />
