@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { supabase } from '../supabaseClient';
 import AlertModal from '../components/AlertModal';
 
 // 🔗 YOUR 5 HARDCODED LINKEDIN REFERRAL LINKS
@@ -59,9 +60,20 @@ export default function SurveyPage({ session }) {
     return true;
   };
 
-  const handleSurveySubmit = (e) => {
+  const handleSurveySubmit = async (e) => {
     e.preventDefault();
     if (!validateFormSelections()) return;
+
+    // Safely attempt to record feedback in DB without blocking the user
+    try {
+      const fullFeedback = `[BOROUGH]: ${currentBorough}\n[TIMELINE]: ${movingTimeline}\n[PROPERTY]: ${propertyType}\n[BUDGET]: ${housingBudget}\n[COMMUTE TOLERANCE]: ${commuteTolerance}\n[PRIORITY]: ${primaryPriority}\n[PAIN POINT]: ${commutePainPoint}\n[WORK MODEL]: ${workModel}\n[FEATURES]: ${desiredFeatures.join(', ')}`;
+      
+      const userEmail = session?.user?.email || 'Anonymous Guest';
+      await supabase.from('user_feedback').insert([{ email: userEmail, feedback_text: fullFeedback }]);
+    } catch (err) {
+      console.log("Recorded locally:", err);
+    }
+
     setSurveyStatus('completed');
   };
 
