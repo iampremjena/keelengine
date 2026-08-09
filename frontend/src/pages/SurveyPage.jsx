@@ -66,6 +66,7 @@ export default function SurveyPage({ session }) {
     e.preventDefault();
     if (!validateFormSelections()) return;
 
+    // Save feedback to Supabase user_feedback table
     try {
       const fullFeedback = `[BOROUGH]: ${currentBorough}\n[TIMELINE]: ${movingTimeline}\n[PROPERTY]: ${propertyType}\n[BUDGET]: ${housingBudget}\n[COMMUTE TOLERANCE]: ${commuteTolerance}\n[PRIORITY]: ${primaryPriority}\n[PAIN POINT]: ${commutePainPoint}\n[WORK MODEL]: ${workModel}\n[FEATURES]: ${desiredFeatures.join(', ')}`;
       const userEmail = session?.user?.email || 'Anonymous Guest';
@@ -84,6 +85,7 @@ export default function SurveyPage({ session }) {
     const claimedIndices = JSON.parse(localStorage.getItem('keel_claimed_links') || '[]');
     let availableIndex = PROMO_LINK_POOL.findIndex((_, idx) => !claimedIndices.includes(idx));
 
+    // If all 5 links have been assigned locally, rotate sequentially
     if (availableIndex === -1) {
       availableIndex = Math.floor(Math.random() * PROMO_LINK_POOL.length);
     } else {
