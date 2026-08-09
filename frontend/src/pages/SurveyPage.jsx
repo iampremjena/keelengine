@@ -25,13 +25,15 @@ export default function SurveyPage({ session }) {
   const [workModel, setWorkModel] = useState('');
   const [desiredFeatures, setDesiredFeatures] = useState([]);
 
-  // Claim States
+  // Claim & Display States
   const [surveyStatus, setSurveyStatus] = useState('idle'); // idle | completed | claimed
   const [claimedReward, setClaimedReward] = useState('');
   const [acceptedTandC, setAcceptedTandC] = useState(false);
   const [copied, setCopied] = useState(false);
 
+  // Developer Bio Text State
   const defaultAbout = `🚀 Prem Jena | Lead Architect & Founder\n\nAs a Data Engineer and Full-Stack Architect, I built KeelEngine to solve a fundamental problem: the London housing market is opaque and mathematically exhausting to navigate.\n\nhttps://linkedin.com/in/iampremjena`;
+  const [aboutText, setAboutText] = useState(defaultAbout);
 
   const [alertConfig, setAlertConfig] = useState({ isOpen: false, title: '', message: '', type: 'success' });
   const showAlert = (title, message, type) => setAlertConfig({ isOpen: true, title, message, type });
@@ -64,14 +66,14 @@ export default function SurveyPage({ session }) {
     e.preventDefault();
     if (!validateFormSelections()) return;
 
-    // Safely attempt to record feedback in DB without blocking the user
+    // Background insert to Supabase user_feedback table
     try {
       const fullFeedback = `[BOROUGH]: ${currentBorough}\n[TIMELINE]: ${movingTimeline}\n[PROPERTY]: ${propertyType}\n[BUDGET]: ${housingBudget}\n[COMMUTE TOLERANCE]: ${commuteTolerance}\n[PRIORITY]: ${primaryPriority}\n[PAIN POINT]: ${commutePainPoint}\n[WORK MODEL]: ${workModel}\n[FEATURES]: ${desiredFeatures.join(', ')}`;
       
       const userEmail = session?.user?.email || 'Anonymous Guest';
       await supabase.from('user_feedback').insert([{ email: userEmail, feedback_text: fullFeedback }]);
     } catch (err) {
-      console.log("Recorded locally:", err);
+      console.log("Feedback save note:", err);
     }
 
     setSurveyStatus('completed');
@@ -80,7 +82,6 @@ export default function SurveyPage({ session }) {
   const handleClaimReward = () => {
     if (!acceptedTandC) return showAlert("Action Required", "You must accept the Terms & Conditions to unlock the link.", "error");
 
-    // Pick a link randomly from the hardcoded array
     const assignedIndex = Math.floor(Math.random() * PROMO_LINK_POOL.length);
     const selectedLink = PROMO_LINK_POOL[assignedIndex];
 
@@ -96,6 +97,7 @@ export default function SurveyPage({ session }) {
   };
 
   const renderAboutText = (text) => {
+    if (!text) return null;
     const urlRegex = /(https?:\/\/[^\s]+)/g;
     return text.split(urlRegex).map((part, i) => {
       if (part.match(urlRegex) && part.includes('linkedin.com')) {
@@ -109,6 +111,7 @@ export default function SurveyPage({ session }) {
     <div className="max-w-6xl mx-auto px-4 py-12 flex flex-col md:flex-row gap-8">
       <AlertModal {...alertConfig} onClose={() => setAlertConfig({ ...alertConfig, isOpen: false })} />
 
+      {/* SURVEY & REWARD SECTION */}
       <div className="w-full md:w-2/3 glass p-8 md:p-10 rounded-3xl shadow-2xl border border-slate-700/40">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-8 pb-6 border-b border-slate-800">
           <div>
@@ -120,7 +123,7 @@ export default function SurveyPage({ session }) {
           </div>
         </div>
 
-        {/* STATE 1: SURVEY QUESTIONS */}
+        {/* STATE 1: SURVEY FORM */}
         {surveyStatus === 'idle' && (
           <form onSubmit={handleSurveySubmit} className="space-y-8 text-left">
             <div>
@@ -225,11 +228,12 @@ export default function SurveyPage({ session }) {
                 })}
               </div>
             </div>
+
             <button type="submit" className="w-full bg-emerald-600 hover:bg-emerald-500 text-white font-bold py-4 rounded-xl shadow-xl transition text-sm">Submit 2-Minute Survey</button>
           </form>
         )}
 
-        {/* STATE 2: COMPLETED (Accept T&Cs) */}
+        {/* STATE 2: T&C ACCEPTANCE */}
         {surveyStatus === 'completed' && (
           <div className="bg-slate-900/80 border border-emerald-500/40 p-8 rounded-2xl text-center animate-fadeIn">
             <span className="text-5xl block mb-4">✅</span>
@@ -251,7 +255,7 @@ export default function SurveyPage({ session }) {
           </div>
         )}
 
-        {/* STATE 3: REWARD LINK DISPLAY */}
+        {/* STATE 3: REFERRAL LINK DISPLAY */}
         {surveyStatus === 'claimed' && (
           <div className="bg-slate-900/80 border border-emerald-500/40 p-8 rounded-2xl text-center animate-fadeIn">
             <span className="text-5xl block mb-4">🎉</span>
@@ -276,6 +280,7 @@ export default function SurveyPage({ session }) {
         )}
       </div>
 
+      {/* ABOUT DEVELOPER SIDEBAR */}
       <div className="w-full md:w-1/3">
         <div className="glass p-8 rounded-3xl shadow-2xl border border-emerald-900/30 sticky top-8">
           <h3 className="text-xl font-black text-emerald-400 mb-6 border-b border-emerald-900/50 pb-4">About the Developer</h3>
