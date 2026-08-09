@@ -33,7 +33,7 @@ export default function SurveyPage({ session }) {
 
   // Developer Bio Text State
   const defaultAbout = `🚀 Prem Jena | Lead Architect & Founder\n\nAs a Data Engineer and Full-Stack Architect, I built KeelEngine to solve a fundamental problem: the London housing market is opaque and mathematically exhausting to navigate.\n\nhttps://linkedin.com/in/iampremjena`;
-  const [aboutText, setAboutText] = useState(defaultAbout);
+  const [aboutText] = useState(defaultAbout);
 
   const [alertConfig, setAlertConfig] = useState({ isOpen: false, title: '', message: '', type: 'success' });
   const showAlert = (title, message, type) => setAlertConfig({ isOpen: true, title, message, type });
@@ -66,10 +66,8 @@ export default function SurveyPage({ session }) {
     e.preventDefault();
     if (!validateFormSelections()) return;
 
-    // Background insert to Supabase user_feedback table
     try {
       const fullFeedback = `[BOROUGH]: ${currentBorough}\n[TIMELINE]: ${movingTimeline}\n[PROPERTY]: ${propertyType}\n[BUDGET]: ${housingBudget}\n[COMMUTE TOLERANCE]: ${commuteTolerance}\n[PRIORITY]: ${primaryPriority}\n[PAIN POINT]: ${commutePainPoint}\n[WORK MODEL]: ${workModel}\n[FEATURES]: ${desiredFeatures.join(', ')}`;
-      
       const userEmail = session?.user?.email || 'Anonymous Guest';
       await supabase.from('user_feedback').insert([{ email: userEmail, feedback_text: fullFeedback }]);
     } catch (err) {
@@ -82,9 +80,18 @@ export default function SurveyPage({ session }) {
   const handleClaimReward = () => {
     if (!acceptedTandC) return showAlert("Action Required", "You must accept the Terms & Conditions to unlock the link.", "error");
 
-    const assignedIndex = Math.floor(Math.random() * PROMO_LINK_POOL.length);
-    const selectedLink = PROMO_LINK_POOL[assignedIndex];
+    // Track distributed link index in localStorage to ensure unique link distribution
+    const claimedIndices = JSON.parse(localStorage.getItem('keel_claimed_links') || '[]');
+    let availableIndex = PROMO_LINK_POOL.findIndex((_, idx) => !claimedIndices.includes(idx));
 
+    if (availableIndex === -1) {
+      availableIndex = Math.floor(Math.random() * PROMO_LINK_POOL.length);
+    } else {
+      claimedIndices.push(availableIndex);
+      localStorage.setItem('keel_claimed_links', JSON.stringify(claimedIndices));
+    }
+
+    const selectedLink = PROMO_LINK_POOL[availableIndex];
     setClaimedReward(selectedLink);
     setSurveyStatus('claimed');
     showAlert("🎉 Reward Unlocked!", "Your 2-Month LinkedIn Premium referral link is ready below!", "success");
@@ -111,7 +118,6 @@ export default function SurveyPage({ session }) {
     <div className="max-w-6xl mx-auto px-4 py-12 flex flex-col md:flex-row gap-8">
       <AlertModal {...alertConfig} onClose={() => setAlertConfig({ ...alertConfig, isOpen: false })} />
 
-      {/* SURVEY & REWARD SECTION */}
       <div className="w-full md:w-2/3 glass p-8 md:p-10 rounded-3xl shadow-2xl border border-slate-700/40">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-8 pb-6 border-b border-slate-800">
           <div>
