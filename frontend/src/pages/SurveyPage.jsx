@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import AlertModal from '../components/AlertModal';
 
-// 🔗 HARDCODED REFERRAL PROMO POOL (Bypasses Supabase Schema Cache)
+// 🔗 YOUR 5 HARDCODED LINKEDIN REFERRAL LINKS
 const PROMO_LINK_POOL = [
   "http://www.linkedin.com/premium/redeem/?upsellOrderOrigin=premium_referrals_homepage_identity_1_sided_entry&coupon=xKAEbVjyf&customKey=ref_c&redeemTypeV2=REFERRAL_COUPON",
   "http://www.linkedin.com/premium/redeem/?upsellOrderOrigin=premium_referrals_homepage_identity_1_sided_entry&coupon=xFS-2ZQHT&customKey=ref_c&redeemTypeV2=REFERRAL_COUPON",
@@ -25,7 +25,7 @@ export default function SurveyPage({ session }) {
   const [desiredFeatures, setDesiredFeatures] = useState([]);
 
   // Claim States
-  const [surveyStatus, setSurveyStatus] = useState('idle'); // idle | submitting | completed | claimed
+  const [surveyStatus, setSurveyStatus] = useState('idle'); // idle | completed | claimed
   const [claimedReward, setClaimedReward] = useState('');
   const [acceptedTandC, setAcceptedTandC] = useState(false);
   const [copied, setCopied] = useState(false);
@@ -61,17 +61,14 @@ export default function SurveyPage({ session }) {
 
   const handleSurveySubmit = (e) => {
     e.preventDefault();
-    if (!session?.user) return showAlert("Sign In Required", "Please log in to submit your survey.", "error");
     if (!validateFormSelections()) return;
-
-    // Directly set status to completed without waiting on database calls
     setSurveyStatus('completed');
   };
 
   const handleClaimReward = () => {
     if (!acceptedTandC) return showAlert("Action Required", "You must accept the Terms & Conditions to unlock the link.", "error");
 
-    // Grab one of the 5 referral links from the array
+    // Pick a link randomly from the hardcoded array
     const assignedIndex = Math.floor(Math.random() * PROMO_LINK_POOL.length);
     const selectedLink = PROMO_LINK_POOL[assignedIndex];
 
@@ -111,8 +108,8 @@ export default function SurveyPage({ session }) {
           </div>
         </div>
 
-        {/* STATE: SURVEY QUESTIONS */}
-        {surveyStatus === 'idle' || surveyStatus === 'submitting' ? (
+        {/* STATE 1: SURVEY QUESTIONS */}
+        {surveyStatus === 'idle' && (
           <form onSubmit={handleSurveySubmit} className="space-y-8 text-left">
             <div>
               <label className="block text-sm font-bold text-emerald-400 uppercase tracking-wider mb-3">1. Where do you currently live?</label>
@@ -218,10 +215,10 @@ export default function SurveyPage({ session }) {
             </div>
             <button type="submit" className="w-full bg-emerald-600 hover:bg-emerald-500 text-white font-bold py-4 rounded-xl shadow-xl transition text-sm">Submit 2-Minute Survey</button>
           </form>
-        ) : null}
+        )}
 
-        {/* STATE: COMPLETED (Accept T&Cs) */}
-        {surveyStatus === 'completed' ? (
+        {/* STATE 2: COMPLETED (Accept T&Cs) */}
+        {surveyStatus === 'completed' && (
           <div className="bg-slate-900/80 border border-emerald-500/40 p-8 rounded-2xl text-center animate-fadeIn">
             <span className="text-5xl block mb-4">✅</span>
             <h3 className="text-2xl font-black text-white mb-2">Survey Complete!</h3>
@@ -240,9 +237,9 @@ export default function SurveyPage({ session }) {
               </button>
             </div>
           </div>
-        ) : null}
+        )}
 
-        {/* STATE: REWARD LINK DISPLAY */}
+        {/* STATE 3: REWARD LINK DISPLAY */}
         {surveyStatus === 'claimed' && (
           <div className="bg-slate-900/80 border border-emerald-500/40 p-8 rounded-2xl text-center animate-fadeIn">
             <span className="text-5xl block mb-4">🎉</span>
