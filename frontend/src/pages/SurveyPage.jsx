@@ -5,17 +5,18 @@ import AlertModal from '../components/AlertModal';
 export default function SurveyPage({ session, isAdmin }) {
   useEffect(() => { document.title = "KeelEngine | Research Survey"; }, []);
 
-  // Form States
-  const [currentBorough, setCurrentBorough] = useState('Outside London');
-  const [movingTimeline, setMovingTimeline] = useState('Within 3 months');
-  const [propertyType, setPropertyType] = useState('1-Bed Private Flat');
-  const [housingBudget, setHousingBudget] = useState('£1,500 - £2,000 / month');
-  const [commuteTolerance, setCommuteTolerance] = useState('45 mins max');
-  const [primaryPriority, setPrimaryPriority] = useState('Commute Time & Transport Links');
-  const [commutePainPoint, setCommutePainPoint] = useState('High Transit Costs / Peak Fares');
+  // Form Selection States (Initialized empty so default clicks don't auto-pass)
+  const [currentBorough, setCurrentBorough] = useState('');
+  const [movingTimeline, setMovingTimeline] = useState('');
+  const [propertyType, setPropertyType] = useState('');
+  const [housingBudget, setHousingBudget] = useState('');
+  const [commuteTolerance, setCommuteTolerance] = useState('');
+  const [primaryPriority, setPrimaryPriority] = useState('');
+  const [commutePainPoint, setCommutePainPoint] = useState('');
+  const [workModel, setWorkModel] = useState('');
   const [desiredFeatures, setDesiredFeatures] = useState([]);
 
-  // Claim States
+  // Claim & Control States
   const [surveyStatus, setSurveyStatus] = useState('idle'); // idle | submitting | completed | claiming | claimed
   const [claimedReward, setClaimedReward] = useState('');
   const [acceptedTandC, setAcceptedTandC] = useState(false);
@@ -41,11 +42,16 @@ export default function SurveyPage({ session, isAdmin }) {
     try {
       const { data, error } = await supabase
         .from('profiles')
-        .select('survey_completed, linkedin_reward_link')
+        .select('survey_completed, linkedin_reward_link, is_admin')
         .eq('id', session.user.id)
         .maybeSingle();
       
       if (error) console.error("Error fetching profile:", error);
+
+      // 🛡️ ADMIN BYPASS: Allow admin account to continuously submit for testing
+      if (data?.is_admin) {
+        return; 
+      }
 
       if (data) {
         if (data.linkedin_reward_link) {
@@ -65,15 +71,57 @@ export default function SurveyPage({ session, isAdmin }) {
     else setDesiredFeatures([...desiredFeatures, feature]);
   };
 
+  // 🛑 Validation: Ensures the user actively picks an option for every question
+  const validateFormSelections = () => {
+    if (!currentBorough) {
+      showAlert("Incomplete Survey", "Please answer Question 1: Where do you currently live?", "error");
+      return false;
+    }
+    if (!movingTimeline) {
+      showAlert("Incomplete Survey", "Please answer Question 2: What is your estimated relocation timeline?", "error");
+      return false;
+    }
+    if (!propertyType) {
+      showAlert("Incomplete Survey", "Please answer Question 3: What property type do you require?", "error");
+      return false;
+    }
+    if (!housingBudget) {
+      showAlert("Incomplete Survey", "Please answer Question 4: What is your target monthly rent budget?", "error");
+      return false;
+    }
+    if (!commuteTolerance) {
+      showAlert("Incomplete Survey", "Please answer Question 5: What is your maximum acceptable commute?", "error");
+      return false;
+    }
+    if (!primaryPriority) {
+      showAlert("Incomplete Survey", "Please answer Question 6: What is your #1 non-negotiable priority?", "error");
+      return false;
+    }
+    if (!commutePainPoint) {
+      showAlert("Incomplete Survey", "Please answer Question 7: What is your biggest London housing frustration?", "error");
+      return false;
+    }
+    if (!workModel) {
+      showAlert("Incomplete Survey", "Please answer Question 8: What is your current work setup?", "error");
+      return false;
+    }
+    if (desiredFeatures.length === 0) {
+      showAlert("Selection Required", "Please select at least one feature in Question 9.", "error");
+      return false;
+    }
+    return true;
+  };
+
   // STEP 1: Submit Survey
   const handleSurveySubmit = async (e) => {
     e.preventDefault();
     if (!session?.user) return showAlert("Sign In Required", "Please log in to submit your survey.", "error");
-    if (desiredFeatures.length === 0) return showAlert("Selection Required", "Please select at least one feature in Question 8.", "error");
+
+    if (!validateFormSelections()) return;
 
     setSurveyStatus('submitting');
     try {
-      const fullFeedback = `[BOROUGH]: ${currentBorough}\n[TIMELINE]: ${movingTimeline}\n[PROPERTY]: ${propertyType}\n[BUDGET]: ${housingBudget}\n[COMMUTE TOLERANCE]: ${commuteTolerance}\n[PRIORITY]: ${primaryPriority}\n[PAIN POINT]: ${commutePainPoint}\n[FEATURES]: ${desiredFeatures.join(', ')}`;
+      const fullFeedback = `[BOROUGH]: ${currentBorough}\n[TIMELINE]: ${movingTimeline}\n[PROPERTY]: ${propertyType}\n[BUDGET]: ${housingBudget}\n[COMMUTE TOLERANCE]: ${commuteTolerance}\n[PRIORITY]: ${primaryPriority}\n[PAIN POINT]: ${commutePainPoint}\n[WORK MODEL]: ${workModel}\n[FEATURES]: ${desiredFeatures.join(', ')}`;
 
       // Save user feedback
       const { error: fbErr } = await supabase.from('user_feedback').insert([{ email: session.user.email, feedback_text: fullFeedback }]);
@@ -97,19 +145,13 @@ export default function SurveyPage({ session, isAdmin }) {
     
     setSurveyStatus('claiming');
     try {
-      // 1. Fetch available link
       const { data: availableLinks, error: fetchErr } = await supabase
         .from('linkedin_rewards')
         .select('*')
         .eq('is_used', false)
         .limit(1);
 
-      if (fetchErr) {
-        console.error("Fetch available rewards error:", fetchErr);
-        throw fetchErr;
-      }
-
-      console.log("Fetched available links from DB:", availableLinks);
+      if (fetchErr) throw fetchErr;
 
       if (!availableLinks || availableLinks.length === 0) {
         showAlert("All Codes Claimed", "Our promo code pool is currently empty. An admin will email you a code shortly!", "error");
@@ -119,7 +161,6 @@ export default function SurveyPage({ session, isAdmin }) {
 
       const selectedReward = availableLinks[0];
 
-      // 2. Mark code as used by current user
       const { error: updateRewardErr } = await supabase
         .from('linkedin_rewards')
         .update({
@@ -129,20 +170,12 @@ export default function SurveyPage({ session, isAdmin }) {
         })
         .eq('id', selectedReward.id);
 
-      if (updateRewardErr) {
-        console.error("Reward assignment error:", updateRewardErr);
-        throw updateRewardErr;
-      }
+      if (updateRewardErr) throw updateRewardErr;
 
-      // 3. Attach link to user profile
-      const { error: updateProfileErr } = await supabase
+      await supabase
         .from('profiles')
         .update({ linkedin_reward_link: selectedReward.promo_link })
         .eq('id', session.user.id);
-
-      if (updateProfileErr) {
-        console.error("Profile reward save error:", updateProfileErr);
-      }
 
       setClaimedReward(selectedReward.promo_link);
       setSurveyStatus('claimed');
@@ -150,7 +183,7 @@ export default function SurveyPage({ session, isAdmin }) {
 
     } catch (err) {
       console.error("Claim reward exception:", err);
-      showAlert("Error", err.message || "Failed to claim reward. Please check browser console.", "error");
+      showAlert("Error", err.message || "Failed to claim reward.", "error");
       setSurveyStatus('completed');
     }
   };
@@ -183,16 +216,100 @@ export default function SurveyPage({ session, isAdmin }) {
         {/* STATE: IDLE */}
         {surveyStatus === 'idle' || surveyStatus === 'submitting' ? (
           <form onSubmit={handleSurveySubmit} className="space-y-8 text-left">
-            <div><label className="block text-sm font-bold text-emerald-400 uppercase tracking-wider mb-3">1. Where do you currently live?</label><select value={currentBorough} onChange={(e) => setCurrentBorough(e.target.value)} className="w-full bg-slate-900 border border-slate-700 rounded-xl px-5 py-4 text-white text-sm outline-none"><option>Outside London (Relocating)</option><option>Zone 1-2 (Central)</option><option>Zone 3-4 (Inner Suburbs)</option><option>Zone 5-6 (Outer Suburbs)</option></select></div>
-            <div><label className="block text-sm font-bold text-emerald-400 uppercase tracking-wider mb-3">2. Estimated relocation timeline?</label><select value={movingTimeline} onChange={(e) => setMovingTimeline(e.target.value)} className="w-full bg-slate-900 border border-slate-700 rounded-xl px-5 py-4 text-white text-sm outline-none"><option>Within 1 month</option><option>Within 3 months</option><option>3 to 6 months</option><option>Just exploring options</option></select></div>
-            <div><label className="block text-sm font-bold text-emerald-400 uppercase tracking-wider mb-3">3. Property type requirement?</label><select value={propertyType} onChange={(e) => setPropertyType(e.target.value)} className="w-full bg-slate-900 border border-slate-700 rounded-xl px-5 py-4 text-white text-sm outline-none"><option>Flatshare / Room</option><option>1-Bed Private Flat</option><option>2-Bed Flat</option><option>House</option></select></div>
-            <div><label className="block text-sm font-bold text-emerald-400 uppercase tracking-wider mb-3">4. Target monthly rent budget?</label><select value={housingBudget} onChange={(e) => setHousingBudget(e.target.value)} className="w-full bg-slate-900 border border-slate-700 rounded-xl px-5 py-4 text-white text-sm outline-none"><option>Under £1,200</option><option>£1,200 - £1,500</option><option>£1,500 - £2,000</option><option>£2,000 - £2,500</option><option>£2,500+</option></select></div>
-            <div><label className="block text-sm font-bold text-emerald-400 uppercase tracking-wider mb-3">5. Maximum acceptable commute?</label><select value={commuteTolerance} onChange={(e) => setCommuteTolerance(e.target.value)} className="w-full bg-slate-900 border border-slate-700 rounded-xl px-5 py-4 text-white text-sm outline-none"><option>30 mins max</option><option>45 mins max</option><option>60 mins max</option><option>90+ mins (Hybrid/Rare commute)</option></select></div>
-            <div><label className="block text-sm font-bold text-emerald-400 uppercase tracking-wider mb-3">6. #1 non-negotiable priority?</label><select value={primaryPriority} onChange={(e) => setPrimaryPriority(e.target.value)} className="w-full bg-slate-900 border border-slate-700 rounded-xl px-5 py-4 text-white text-sm outline-none"><option>Commute Time & Transport Links</option><option>Safety & Low Crime</option><option>Affordable Rent</option><option>Vibrant Nightlife</option><option>Parks & Green Space</option></select></div>
-            <div><label className="block text-sm font-bold text-emerald-400 uppercase tracking-wider mb-3">7. Biggest London housing frustration?</label><select value={commutePainPoint} onChange={(e) => setCommutePainPoint(e.target.value)} className="w-full bg-slate-900 border border-slate-700 rounded-xl px-5 py-4 text-white text-sm outline-none"><option>High Transit Costs / Peak Fares</option><option>Misleading Neighborhood Safety</option><option>Rental Prices Exceeding Budget</option><option>Bidding wars / Low supply</option></select></div>
-            
             <div>
-              <label className="block text-sm font-bold text-emerald-400 uppercase tracking-wider mb-2">8. Which features should we build next?</label>
+              <label className="block text-sm font-bold text-emerald-400 uppercase tracking-wider mb-3">1. Where do you currently live?</label>
+              <select value={currentBorough} onChange={(e) => setCurrentBorough(e.target.value)} className="w-full bg-slate-900 border border-slate-700 rounded-xl px-5 py-4 text-white text-sm outline-none">
+                <option value="">-- Please Select an Option --</option>
+                <option value="Outside London (Relocating)">Outside London (Relocating)</option>
+                <option value="Zone 1-2 (Central)">Zone 1-2 (Central)</option>
+                <option value="Zone 3-4 (Inner Suburbs)">Zone 3-4 (Inner Suburbs)</option>
+                <option value="Zone 5-6 (Outer Suburbs)">Zone 5-6 (Outer Suburbs)</option>
+              </select>
+            </div>
+
+            <div>
+              <label className="block text-sm font-bold text-emerald-400 uppercase tracking-wider mb-3">2. Estimated relocation timeline?</label>
+              <select value={movingTimeline} onChange={(e) => setMovingTimeline(e.target.value)} className="w-full bg-slate-900 border border-slate-700 rounded-xl px-5 py-4 text-white text-sm outline-none">
+                <option value="">-- Please Select an Option --</option>
+                <option value="Within 1 month">Within 1 month</option>
+                <option value="Within 3 months">Within 3 months</option>
+                <option value="3 to 6 months">3 to 6 months</option>
+                <option value="Just exploring options">Just exploring options</option>
+              </select>
+            </div>
+
+            <div>
+              <label className="block text-sm font-bold text-emerald-400 uppercase tracking-wider mb-3">3. Property type requirement?</label>
+              <select value={propertyType} onChange={(e) => setPropertyType(e.target.value)} className="w-full bg-slate-900 border border-slate-700 rounded-xl px-5 py-4 text-white text-sm outline-none">
+                <option value="">-- Please Select an Option --</option>
+                <option value="Flatshare / Room">Flatshare / Room</option>
+                <option value="1-Bed Private Flat">1-Bed Private Flat</option>
+                <option value="2-Bed Flat">2-Bed Flat</option>
+                <option value="House">House</option>
+              </select>
+            </div>
+
+            <div>
+              <label className="block text-sm font-bold text-emerald-400 uppercase tracking-wider mb-3">4. Target monthly rent budget?</label>
+              <select value={housingBudget} onChange={(e) => setHousingBudget(e.target.value)} className="w-full bg-slate-900 border border-slate-700 rounded-xl px-5 py-4 text-white text-sm outline-none">
+                <option value="">-- Please Select an Option --</option>
+                <option value="Under £1,200">Under £1,200</option>
+                <option value="£1,200 - £1,500">£1,200 - £1,500</option>
+                <option value="£1,500 - £2,000">£1,500 - £2,000</option>
+                <option value="£2,000 - £2,500">£2,000 - £2,500</option>
+                <option value="£2,500+">£2,500+</option>
+              </select>
+            </div>
+
+            <div>
+              <label className="block text-sm font-bold text-emerald-400 uppercase tracking-wider mb-3">5. Maximum acceptable commute?</label>
+              <select value={commuteTolerance} onChange={(e) => setCommuteTolerance(e.target.value)} className="w-full bg-slate-900 border border-slate-700 rounded-xl px-5 py-4 text-white text-sm outline-none">
+                <option value="">-- Please Select an Option --</option>
+                <option value="30 mins max">30 mins max</option>
+                <option value="45 mins max">45 mins max</option>
+                <option value="60 mins max">60 mins max</option>
+                <option value="90+ mins (Hybrid/Rare commute)">90+ mins (Hybrid/Rare commute)</option>
+              </select>
+            </div>
+
+            <div>
+              <label className="block text-sm font-bold text-emerald-400 uppercase tracking-wider mb-3">6. #1 non-negotiable priority?</label>
+              <select value={primaryPriority} onChange={(e) => setPrimaryPriority(e.target.value)} className="w-full bg-slate-900 border border-slate-700 rounded-xl px-5 py-4 text-white text-sm outline-none">
+                <option value="">-- Please Select an Option --</option>
+                <option value="Commute Time & Transport Links">Commute Time & Transport Links</option>
+                <option value="Safety & Low Crime">Safety & Low Crime</option>
+                <option value="Affordable Rent">Affordable Rent</option>
+                <option value="Vibrant Nightlife">Vibrant Nightlife</option>
+                <option value="Parks & Green Space">Parks & Green Space</option>
+              </select>
+            </div>
+
+            <div>
+              <label className="block text-sm font-bold text-emerald-400 uppercase tracking-wider mb-3">7. Biggest London housing frustration?</label>
+              <select value={commutePainPoint} onChange={(e) => setCommutePainPoint(e.target.value)} className="w-full bg-slate-900 border border-slate-700 rounded-xl px-5 py-4 text-white text-sm outline-none">
+                <option value="">-- Please Select an Option --</option>
+                <option value="High Transit Costs / Peak Fares">High Transit Costs / Peak Fares</option>
+                <option value="Misleading Neighborhood Safety">Misleading Neighborhood Safety</option>
+                <option value="Rental Prices Exceeding Budget">Rental Prices Exceeding Budget</option>
+                <option value="Bidding wars / Low supply">Bidding wars / Low supply</option>
+              </select>
+            </div>
+
+            {/* QUESTION 8 */}
+            <div>
+              <label className="block text-sm font-bold text-emerald-400 uppercase tracking-wider mb-3">8. What is your current work setup?</label>
+              <select value={workModel} onChange={(e) => setWorkModel(e.target.value)} className="w-full bg-slate-900 border border-slate-700 rounded-xl px-5 py-4 text-white text-sm outline-none">
+                <option value="">-- Please Select an Option --</option>
+                <option value="Fully Remote">Fully Remote</option>
+                <option value="Hybrid (1-2 days in office)">Hybrid (1-2 days in office)</option>
+                <option value="Hybrid (3-4 days in office)">Hybrid (3-4 days in office)</option>
+                <option value="Full-Time In-Office (5 days)">Full-Time In-Office (5 days)</option>
+              </select>
+            </div>
+            
+            {/* QUESTION 9 */}
+            <div>
+              <label className="block text-sm font-bold text-emerald-400 uppercase tracking-wider mb-2">9. Which features should we build next?</label>
               <p className="text-xs text-slate-400 mb-4">Select all that apply:</p>
               <div className="flex flex-wrap gap-3">
                 {FEATURE_CHIPS.map((chip, idx) => {
