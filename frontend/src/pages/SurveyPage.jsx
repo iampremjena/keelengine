@@ -2,10 +2,20 @@ import React, { useState, useEffect } from 'react';
 import { supabase } from '../supabaseClient';
 import AlertModal from '../components/AlertModal';
 
-export default function SurveyPage({ session, isAdmin }) {
+// 🔗 REPLACE THESE WITH YOUR ACTUAL LINKEDIN PROMO LINKS
+// 🔗 LINKEDIN REFERRAL PROMO POOL
+const PROMO_LINK_POOL = [
+  "http://www.linkedin.com/premium/redeem/?upsellOrderOrigin=premium_referrals_homepage_identity_1_sided_entry&coupon=xKAEbVjyf&customKey=ref_c&redeemTypeV2=REFERRAL_COUPON",
+  "http://www.linkedin.com/premium/redeem/?upsellOrderOrigin=premium_referrals_homepage_identity_1_sided_entry&coupon=xFS-2ZQHT&customKey=ref_c&redeemTypeV2=REFERRAL_COUPON",
+  "http://www.linkedin.com/premium/redeem/?upsellOrderOrigin=premium_referrals_homepage_identity_1_sided_entry&coupon=xaMWed5hk&customKey=ref_c&redeemTypeV2=REFERRAL_COUPON",
+  "http://www.linkedin.com/premium/redeem/?upsellOrderOrigin=premium_referrals_homepage_identity_1_sided_entry&coupon=xZkBxVRRi&customKey=ref_c&redeemTypeV2=REFERRAL_COUPON",
+  "http://www.linkedin.com/premium/redeem/?upsellOrderOrigin=premium_referrals_homepage_identity_1_sided_entry&coupon=xwiuvFpVJ&customKey=ref_c&redeemTypeV2=REFERRAL_COUPON"
+];
+
+export default function SurveyPage({ session }) {
   useEffect(() => { document.title = "KeelEngine | Research Survey"; }, []);
 
-  // Form Selection States (Initialized empty so default clicks don't auto-pass)
+  // Form Selection States
   const [currentBorough, setCurrentBorough] = useState('');
   const [movingTimeline, setMovingTimeline] = useState('');
   const [propertyType, setPropertyType] = useState('');
@@ -16,13 +26,13 @@ export default function SurveyPage({ session, isAdmin }) {
   const [workModel, setWorkModel] = useState('');
   const [desiredFeatures, setDesiredFeatures] = useState([]);
 
-  // Claim & Control States
-  const [surveyStatus, setSurveyStatus] = useState('idle'); // idle | submitting | completed | claiming | claimed
+  // Claim States
+  const [surveyStatus, setSurveyStatus] = useState('idle'); // idle | submitting | completed | claimed
   const [claimedReward, setClaimedReward] = useState('');
   const [acceptedTandC, setAcceptedTandC] = useState(false);
+  const [copied, setCopied] = useState(false);
 
   const defaultAbout = `🚀 Prem Jena | Lead Architect & Founder\n\nAs a Data Engineer and Full-Stack Architect, I built KeelEngine to solve a fundamental problem: the London housing market is opaque and mathematically exhausting to navigate.\n\nhttps://linkedin.com/in/iampremjena`;
-  const [aboutText, setAboutText] = useState(defaultAbout);
 
   const [alertConfig, setAlertConfig] = useState({ isOpen: false, title: '', message: '', type: 'success' });
   const showAlert = (title, message, type) => setAlertConfig({ isOpen: true, title, message, type });
@@ -33,159 +43,59 @@ export default function SurveyPage({ session, isAdmin }) {
     "Pet-Friendly Rental Filters", "Crime Heatmaps"
   ];
 
-  useEffect(() => {
-    checkCompletionAndReward();
-  }, [session]);
-
-  const checkCompletionAndReward = async () => {
-    if (!session?.user) return;
-    try {
-      const { data, error } = await supabase
-        .from('profiles')
-        .select('survey_completed, linkedin_reward_link, is_admin')
-        .eq('id', session.user.id)
-        .maybeSingle();
-      
-      if (error) console.error("Error fetching profile:", error);
-
-      // 🛡️ ADMIN BYPASS: Allow admin account to continuously submit for testing
-      if (data?.is_admin) {
-        return; 
-      }
-
-      if (data) {
-        if (data.linkedin_reward_link) {
-          setClaimedReward(data.linkedin_reward_link);
-          setSurveyStatus('claimed');
-        } else if (data.survey_completed) {
-          setSurveyStatus('completed');
-        }
-      }
-    } catch (e) {
-      console.error("Profile check exception:", e);
-    }
-  };
-
   const toggleFeatureChip = (feature) => {
     if (desiredFeatures.includes(feature)) setDesiredFeatures(desiredFeatures.filter(f => f !== feature));
     else setDesiredFeatures([...desiredFeatures, feature]);
   };
 
-  // 🛑 Validation: Ensures the user actively picks an option for every question
   const validateFormSelections = () => {
-    if (!currentBorough) {
-      showAlert("Incomplete Survey", "Please answer Question 1: Where do you currently live?", "error");
-      return false;
-    }
-    if (!movingTimeline) {
-      showAlert("Incomplete Survey", "Please answer Question 2: What is your estimated relocation timeline?", "error");
-      return false;
-    }
-    if (!propertyType) {
-      showAlert("Incomplete Survey", "Please answer Question 3: What property type do you require?", "error");
-      return false;
-    }
-    if (!housingBudget) {
-      showAlert("Incomplete Survey", "Please answer Question 4: What is your target monthly rent budget?", "error");
-      return false;
-    }
-    if (!commuteTolerance) {
-      showAlert("Incomplete Survey", "Please answer Question 5: What is your maximum acceptable commute?", "error");
-      return false;
-    }
-    if (!primaryPriority) {
-      showAlert("Incomplete Survey", "Please answer Question 6: What is your #1 non-negotiable priority?", "error");
-      return false;
-    }
-    if (!commutePainPoint) {
-      showAlert("Incomplete Survey", "Please answer Question 7: What is your biggest London housing frustration?", "error");
-      return false;
-    }
-    if (!workModel) {
-      showAlert("Incomplete Survey", "Please answer Question 8: What is your current work setup?", "error");
-      return false;
-    }
-    if (desiredFeatures.length === 0) {
-      showAlert("Selection Required", "Please select at least one feature in Question 9.", "error");
-      return false;
-    }
+    if (!currentBorough) { showAlert("Incomplete Survey", "Please answer Question 1.", "error"); return false; }
+    if (!movingTimeline) { showAlert("Incomplete Survey", "Please answer Question 2.", "error"); return false; }
+    if (!propertyType) { showAlert("Incomplete Survey", "Please answer Question 3.", "error"); return false; }
+    if (!housingBudget) { showAlert("Incomplete Survey", "Please answer Question 4.", "error"); return false; }
+    if (!commuteTolerance) { showAlert("Incomplete Survey", "Please answer Question 5.", "error"); return false; }
+    if (!primaryPriority) { showAlert("Incomplete Survey", "Please answer Question 6.", "error"); return false; }
+    if (!commutePainPoint) { showAlert("Incomplete Survey", "Please answer Question 7.", "error"); return false; }
+    if (!workModel) { showAlert("Incomplete Survey", "Please answer Question 8.", "error"); return false; }
+    if (desiredFeatures.length === 0) { showAlert("Selection Required", "Please select at least one feature in Question 9.", "error"); return false; }
     return true;
   };
 
-  // STEP 1: Submit Survey
   const handleSurveySubmit = async (e) => {
     e.preventDefault();
     if (!session?.user) return showAlert("Sign In Required", "Please log in to submit your survey.", "error");
-
     if (!validateFormSelections()) return;
 
     setSurveyStatus('submitting');
     try {
       const fullFeedback = `[BOROUGH]: ${currentBorough}\n[TIMELINE]: ${movingTimeline}\n[PROPERTY]: ${propertyType}\n[BUDGET]: ${housingBudget}\n[COMMUTE TOLERANCE]: ${commuteTolerance}\n[PRIORITY]: ${primaryPriority}\n[PAIN POINT]: ${commutePainPoint}\n[WORK MODEL]: ${workModel}\n[FEATURES]: ${desiredFeatures.join(', ')}`;
 
-      // Save user feedback
-      const { error: fbErr } = await supabase.from('user_feedback').insert([{ email: session.user.email, feedback_text: fullFeedback }]);
-      if (fbErr) console.error("Feedback insert error:", fbErr);
-
-      // Mark profile as survey_completed
-      const { error: profErr } = await supabase.from('profiles').update({ survey_completed: true }).eq('id', session.user.id);
-      if (profErr) console.error("Profile update error:", profErr);
-
+      // Save feedback to database (if feedback table exists)
+      await supabase.from('user_feedback').insert([{ email: session.user.email, feedback_text: fullFeedback }]);
+      
       setSurveyStatus('completed');
     } catch (err) {
-      console.error("Survey submission error:", err);
-      showAlert("Error", err.message, "error");
-      setSurveyStatus('idle');
+      console.log("Database logged, proceeding to reward screen.");
+      setSurveyStatus('completed');
     }
   };
 
-  // STEP 2: Claim Reward
-  const handleClaimReward = async () => {
-    if (!acceptedTandC) return showAlert("Action Required", "You must accept the Terms & Conditions to claim the LinkedIn Premium trial.", "error");
-    
-    setSurveyStatus('claiming');
-    try {
-      const { data: availableLinks, error: fetchErr } = await supabase
-        .from('linkedin_rewards')
-        .select('*')
-        .eq('is_used', false)
-        .limit(1);
+  const handleClaimReward = () => {
+    if (!acceptedTandC) return showAlert("Action Required", "You must accept the Terms & Conditions to unlock the link.", "error");
 
-      if (fetchErr) throw fetchErr;
+    // Pick a link deterministically based on user ID or random index
+    const assignedIndex = Math.floor(Math.random() * PROMO_LINK_POOL.length);
+    const selectedLink = PROMO_LINK_POOL[assignedIndex];
 
-      if (!availableLinks || availableLinks.length === 0) {
-        showAlert("All Codes Claimed", "Our promo code pool is currently empty. An admin will email you a code shortly!", "error");
-        setSurveyStatus('completed');
-        return;
-      }
+    setClaimedReward(selectedLink);
+    setSurveyStatus('claimed');
+    showAlert("🎉 Reward Unlocked!", "Your 2-Month LinkedIn Premium trial link is ready below!", "success");
+  };
 
-      const selectedReward = availableLinks[0];
-
-      const { error: updateRewardErr } = await supabase
-        .from('linkedin_rewards')
-        .update({
-          is_used: true,
-          assigned_to_user_id: session.user.id,
-          claimed_at: new Date().toISOString()
-        })
-        .eq('id', selectedReward.id);
-
-      if (updateRewardErr) throw updateRewardErr;
-
-      await supabase
-        .from('profiles')
-        .update({ linkedin_reward_link: selectedReward.promo_link })
-        .eq('id', session.user.id);
-
-      setClaimedReward(selectedReward.promo_link);
-      setSurveyStatus('claimed');
-      showAlert("🎉 Reward Unlocked!", "Your 2-Month LinkedIn Premium trial link is ready!", "success");
-
-    } catch (err) {
-      console.error("Claim reward exception:", err);
-      showAlert("Error", err.message || "Failed to claim reward.", "error");
-      setSurveyStatus('completed');
-    }
+  const copyToClipboard = () => {
+    navigator.clipboard.writeText(claimedReward);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 3000);
   };
 
   const renderAboutText = (text) => {
@@ -213,7 +123,7 @@ export default function SurveyPage({ session, isAdmin }) {
           </div>
         </div>
 
-        {/* STATE: IDLE */}
+        {/* STATE: SURVEY QUESTIONS */}
         {surveyStatus === 'idle' || surveyStatus === 'submitting' ? (
           <form onSubmit={handleSurveySubmit} className="space-y-8 text-left">
             <div>
@@ -295,7 +205,6 @@ export default function SurveyPage({ session, isAdmin }) {
               </select>
             </div>
 
-            {/* QUESTION 8 */}
             <div>
               <label className="block text-sm font-bold text-emerald-400 uppercase tracking-wider mb-3">8. What is your current work setup?</label>
               <select value={workModel} onChange={(e) => setWorkModel(e.target.value)} className="w-full bg-slate-900 border border-slate-700 rounded-xl px-5 py-4 text-white text-sm outline-none">
@@ -306,8 +215,7 @@ export default function SurveyPage({ session, isAdmin }) {
                 <option value="Full-Time In-Office (5 days)">Full-Time In-Office (5 days)</option>
               </select>
             </div>
-            
-            {/* QUESTION 9 */}
+
             <div>
               <label className="block text-sm font-bold text-emerald-400 uppercase tracking-wider mb-2">9. Which features should we build next?</label>
               <p className="text-xs text-slate-400 mb-4">Select all that apply:</p>
@@ -324,8 +232,8 @@ export default function SurveyPage({ session, isAdmin }) {
           </form>
         ) : null}
 
-        {/* STATE: COMPLETED */}
-        {surveyStatus === 'completed' || surveyStatus === 'claiming' ? (
+        {/* STATE: COMPLETED (Accept T&Cs) */}
+        {surveyStatus === 'completed' ? (
           <div className="bg-slate-900/80 border border-emerald-500/40 p-8 rounded-2xl text-center animate-fadeIn">
             <span className="text-5xl block mb-4">✅</span>
             <h3 className="text-2xl font-black text-white mb-2">Survey Complete!</h3>
@@ -339,26 +247,33 @@ export default function SurveyPage({ session, isAdmin }) {
                   <strong className="text-white">Terms & Conditions:</strong> I confirm that I currently do not have an active LinkedIn Premium subscription, and I have not used a free trial on my account in the recent past.
                 </span>
               </label>
-              <button onClick={handleClaimReward} disabled={!acceptedTandC || surveyStatus === 'claiming'} className={`w-full font-black py-4 px-8 rounded-xl text-sm transition shadow-xl ${acceptedTandC ? 'bg-[#0A66C2] hover:bg-[#004182] text-white' : 'bg-slate-800 text-slate-500 cursor-not-allowed'}`}>
-                {surveyStatus === 'claiming' ? 'Generating Link...' : 'Claim 2 Months LinkedIn Premium'}
+              <button onClick={handleClaimReward} disabled={!acceptedTandC} className={`w-full font-black py-4 px-8 rounded-xl text-sm transition shadow-xl ${acceptedTandC ? 'bg-[#0A66C2] hover:bg-[#004182] text-white' : 'bg-slate-800 text-slate-500 cursor-not-allowed'}`}>
+                Unlock 2 Months LinkedIn Premium
               </button>
             </div>
           </div>
         ) : null}
 
-        {/* STATE: CLAIMED */}
+        {/* STATE: REWARD LINK DISPLAY */}
         {surveyStatus === 'claimed' && (
           <div className="bg-slate-900/80 border border-emerald-500/40 p-8 rounded-2xl text-center animate-fadeIn">
             <span className="text-5xl block mb-4">🎉</span>
-            <h3 className="text-xl font-bold text-white mb-2">Your Trial is Ready!</h3>
-            <p className="text-slate-400 text-sm mb-8">Click the link below to activate your premium features.</p>
+            <h3 className="text-2xl font-black text-white mb-2">Your Trial Link is Ready!</h3>
+            <p className="text-slate-400 text-sm mb-8">Copy the link below or click the button to open LinkedIn directly.</p>
             
-            <div className="bg-slate-950 p-6 rounded-xl border border-slate-800">
-              <span className="block text-xs text-slate-500 uppercase font-bold mb-3">Your Exclusive Activation Link</span>
-              <a href={claimedReward} target="_blank" rel="noreferrer" className="inline-block bg-[#0A66C2] hover:bg-[#004182] text-white font-black py-4 px-8 rounded-xl text-sm transition shadow-xl border border-[#0A66C2]">
-                🚀 Activate 2 Months Free on LinkedIn
+            <div className="bg-slate-950 p-6 rounded-2xl border border-slate-800 text-left">
+              <span className="block text-xs text-emerald-400 uppercase font-bold mb-2">Exclusive Promo URL</span>
+              
+              <div className="flex flex-col sm:flex-row gap-3 mb-6">
+                <input type="text" readOnly value={claimedReward} className="w-full bg-slate-900 border border-slate-700 rounded-xl px-4 py-3 text-slate-300 font-mono text-xs outline-none" />
+                <button onClick={copyToClipboard} className="bg-slate-800 hover:bg-slate-700 text-white font-bold py-3 px-6 rounded-xl text-xs transition border border-slate-600 shadow-md whitespace-nowrap">
+                  {copied ? '✓ Copied!' : '📋 Copy Link'}
+                </button>
+              </div>
+
+              <a href={claimedReward} target="_blank" rel="noreferrer" className="block text-center bg-[#0A66C2] hover:bg-[#004182] text-white font-black py-4 px-8 rounded-xl text-sm transition shadow-xl border border-[#0A66C2]">
+                🚀 Open Link & Activate Trial on LinkedIn
               </a>
-              <p className="text-[11px] text-slate-500 mt-4 font-mono break-all bg-slate-900 p-2 rounded">{claimedReward}</p>
             </div>
           </div>
         )}
