@@ -66,20 +66,20 @@ export default function SurveyPage({ session }) {
 
     if (error) {
       console.error("Feedback Insert Error:", error);
-      showAlert("Database Warning", `Could not record feedback: ${error.message}`, "error");
+      showAlert("Notice", `Feedback submission issue: ${error.message}`, "error");
     }
 
     setSurveyStatus('completed');
   };
 
-  // STEP 2: Claim unique link directly from Database
+  // STEP 2: Claim link directly from Database
   const handleClaimReward = async () => {
     if (!acceptedTandC) return showAlert("Action Required", "You must accept the Terms & Conditions to unlock the link.", "error");
 
     setSurveyStatus('claiming');
 
     try {
-      // Fetch 1 unused code from linkedin_rewards table
+      // 1. Fetch available link
       const { data: availableLinks, error: fetchErr } = await supabase
         .from('linkedin_rewards')
         .select('*')
@@ -89,24 +89,28 @@ export default function SurveyPage({ session }) {
       if (fetchErr) throw fetchErr;
 
       if (!availableLinks || availableLinks.length === 0) {
-        showAlert("Pool Empty", "All database codes have been claimed. Admin will reach out shortly!", "error");
+        showAlert("Pool Empty", "All promo codes have been claimed for today. An admin will email you shortly!", "error");
         setSurveyStatus('completed');
         return;
       }
 
       const selectedReward = availableLinks[0];
 
-      // Mark the link as used by current user
+      // 2. Mark code as claimed
+      const updatePayload = {
+        is_used: true,
+        claimed_at: new Date().toISOString()
+      };
       if (session?.user?.id) {
-        await supabase
-          .from('linkedin_rewards')
-          .update({
-            is_used: true,
-            assigned_to_user_id: session.user.id,
-            claimed_at: new Date().toISOString()
-          })
-          .eq('id', selectedReward.id);
+        updatePayload.assigned_to_user_id = session.user.id;
       }
+
+      const { error: updateErr } = await supabase
+        .from('linkedin_rewards')
+        .update(updatePayload)
+        .eq('id', selectedReward.id);
+
+      if (updateErr) throw updateErr;
 
       setClaimedReward(selectedReward.promo_link);
       setSurveyStatus('claimed');
@@ -114,7 +118,7 @@ export default function SurveyPage({ session }) {
 
     } catch (err) {
       console.error("Claim reward exception:", err);
-      showAlert("Claim Error", err.message || "Failed to fetch reward link from database.", "error");
+      showAlert("Claim Error", err.message || "Failed to fetch reward link.", "error");
       setSurveyStatus('completed');
     }
   };
@@ -279,7 +283,7 @@ export default function SurveyPage({ session }) {
                 </span>
               </label>
               <button onClick={handleClaimReward} disabled={!acceptedTandC || surveyStatus === 'claiming'} className={`w-full font-black py-4 px-8 rounded-xl text-sm transition shadow-xl ${acceptedTandC ? 'bg-[#0A66C2] hover:bg-[#004182] text-white' : 'bg-slate-800 text-slate-500 cursor-not-allowed'}`}>
-                {surveyStatus === 'claiming' ? 'Fetching Database Link...' : 'Unlock 2 Months LinkedIn Premium'}
+                {surveyStatus === 'claiming' ? 'Fetching Code...' : 'Unlock 2 Months LinkedIn Premium'}
               </button>
             </div>
           </div>
@@ -289,7 +293,7 @@ export default function SurveyPage({ session }) {
         {surveyStatus === 'claimed' && (
           <div className="bg-slate-900/80 border border-emerald-500/40 p-8 rounded-2xl text-center animate-fadeIn">
             <span className="text-5xl block mb-4">🎉</span>
-            <h3 className="text-2xl font-black text-white mb-2">Your Database Link is Ready!</h3>
+            <h3 className="text-2xl font-black text-white mb-2">Your Referral Link is Ready!</h3>
             <p className="text-slate-400 text-sm mb-8">Copy the link below or click the button to open LinkedIn directly.</p>
             
             <div className="bg-slate-950 p-6 rounded-2xl border border-slate-800 text-left">
