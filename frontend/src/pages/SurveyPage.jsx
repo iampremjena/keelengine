@@ -2,7 +2,6 @@ import React, { useState, useEffect } from 'react';
 import { supabase } from '../supabaseClient';
 import AlertModal from '../components/AlertModal';
 
-// 🔗 YOUR 5 HARDCODED LINKEDIN REFERRAL LINKS
 const PROMO_LINK_POOL = [
   "http://www.linkedin.com/premium/redeem/?upsellOrderOrigin=premium_referrals_homepage_identity_1_sided_entry&coupon=xKAEbVjyf&customKey=ref_c&redeemTypeV2=REFERRAL_COUPON",
   "http://www.linkedin.com/premium/redeem/?upsellOrderOrigin=premium_referrals_homepage_identity_1_sided_entry&coupon=xFS-2ZQHT&customKey=ref_c&redeemTypeV2=REFERRAL_COUPON",
@@ -14,7 +13,6 @@ const PROMO_LINK_POOL = [
 export default function SurveyPage({ session }) {
   useEffect(() => { document.title = "KeelEngine | Research Survey"; }, []);
 
-  // Form Selection States
   const [currentBorough, setCurrentBorough] = useState('');
   const [movingTimeline, setMovingTimeline] = useState('');
   const [propertyType, setPropertyType] = useState('');
@@ -25,13 +23,11 @@ export default function SurveyPage({ session }) {
   const [workModel, setWorkModel] = useState('');
   const [desiredFeatures, setDesiredFeatures] = useState([]);
 
-  // Claim & Display States
-  const [surveyStatus, setSurveyStatus] = useState('idle'); // idle | completed | claimed
+  const [surveyStatus, setSurveyStatus] = useState('idle');
   const [claimedReward, setClaimedReward] = useState('');
   const [acceptedTandC, setAcceptedTandC] = useState(false);
   const [copied, setCopied] = useState(false);
 
-  // Developer Bio Text State
   const defaultAbout = `🚀 Prem Jena | Lead Architect & Founder\n\nAs a Data Engineer and Full-Stack Architect, I built KeelEngine to solve a fundamental problem: the London housing market is opaque and mathematically exhausting to navigate.\n\nhttps://linkedin.com/in/iampremjena`;
   const [aboutText] = useState(defaultAbout);
 
@@ -66,13 +62,14 @@ export default function SurveyPage({ session }) {
     e.preventDefault();
     if (!validateFormSelections()) return;
 
-    // Save feedback to Supabase user_feedback table
-    try {
-      const fullFeedback = `[BOROUGH]: ${currentBorough}\n[TIMELINE]: ${movingTimeline}\n[PROPERTY]: ${propertyType}\n[BUDGET]: ${housingBudget}\n[COMMUTE TOLERANCE]: ${commuteTolerance}\n[PRIORITY]: ${primaryPriority}\n[PAIN POINT]: ${commutePainPoint}\n[WORK MODEL]: ${workModel}\n[FEATURES]: ${desiredFeatures.join(', ')}`;
-      const userEmail = session?.user?.email || 'Anonymous Guest';
-      await supabase.from('user_feedback').insert([{ email: userEmail, feedback_text: fullFeedback }]);
-    } catch (err) {
-      console.log("Feedback save note:", err);
+    const fullFeedback = `[BOROUGH]: ${currentBorough}\n[TIMELINE]: ${movingTimeline}\n[PROPERTY]: ${propertyType}\n[BUDGET]: ${housingBudget}\n[COMMUTE TOLERANCE]: ${commuteTolerance}\n[PRIORITY]: ${primaryPriority}\n[PAIN POINT]: ${commutePainPoint}\n[WORK MODEL]: ${workModel}\n[FEATURES]: ${desiredFeatures.join(', ')}`;
+    const userEmail = session?.user?.email || 'Anonymous Guest';
+
+    const { error } = await supabase.from('user_feedback').insert([{ email: userEmail, feedback_text: fullFeedback }]);
+
+    if (error) {
+      console.error("Supabase insert error:", error);
+      showAlert("Database Warning", `Feedback submission notice: ${error.message}. Proceeding to reward...`, "error");
     }
 
     setSurveyStatus('completed');
@@ -81,11 +78,9 @@ export default function SurveyPage({ session }) {
   const handleClaimReward = () => {
     if (!acceptedTandC) return showAlert("Action Required", "You must accept the Terms & Conditions to unlock the link.", "error");
 
-    // Track distributed link index in localStorage to ensure unique link distribution
     const claimedIndices = JSON.parse(localStorage.getItem('keel_claimed_links') || '[]');
     let availableIndex = PROMO_LINK_POOL.findIndex((_, idx) => !claimedIndices.includes(idx));
 
-    // If all 5 links have been assigned locally, rotate sequentially
     if (availableIndex === -1) {
       availableIndex = Math.floor(Math.random() * PROMO_LINK_POOL.length);
     } else {
@@ -131,7 +126,6 @@ export default function SurveyPage({ session }) {
           </div>
         </div>
 
-        {/* STATE 1: SURVEY FORM */}
         {surveyStatus === 'idle' && (
           <form onSubmit={handleSurveySubmit} className="space-y-8 text-left">
             <div>
@@ -241,7 +235,6 @@ export default function SurveyPage({ session }) {
           </form>
         )}
 
-        {/* STATE 2: T&C ACCEPTANCE */}
         {surveyStatus === 'completed' && (
           <div className="bg-slate-900/80 border border-emerald-500/40 p-8 rounded-2xl text-center animate-fadeIn">
             <span className="text-5xl block mb-4">✅</span>
@@ -263,7 +256,6 @@ export default function SurveyPage({ session }) {
           </div>
         )}
 
-        {/* STATE 3: REFERRAL LINK DISPLAY */}
         {surveyStatus === 'claimed' && (
           <div className="bg-slate-900/80 border border-emerald-500/40 p-8 rounded-2xl text-center animate-fadeIn">
             <span className="text-5xl block mb-4">🎉</span>
@@ -288,7 +280,6 @@ export default function SurveyPage({ session }) {
         )}
       </div>
 
-      {/* ABOUT DEVELOPER SIDEBAR */}
       <div className="w-full md:w-1/3">
         <div className="glass p-8 rounded-3xl shadow-2xl border border-emerald-900/30 sticky top-8">
           <h3 className="text-xl font-black text-emerald-400 mb-6 border-b border-emerald-900/50 pb-4">About the Developer</h3>
