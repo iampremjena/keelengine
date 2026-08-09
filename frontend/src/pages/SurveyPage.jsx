@@ -3,9 +3,9 @@ import { supabase } from '../supabaseClient';
 import AlertModal from '../components/AlertModal';
 
 export default function SurveyPage({ session, isAdmin }) {
-  useEffect(() => { document.title = "KeelEngine | Detailed Research Survey"; }, []);
+  useEffect(() => { document.title = "KeelEngine | Research Survey"; }, []);
 
-  // Detailed Survey States
+  // Form States
   const [currentBorough, setCurrentBorough] = useState('Outside London');
   const [movingTimeline, setMovingTimeline] = useState('Within 3 months');
   const [propertyType, setPropertyType] = useState('1-Bed Private Flat');
@@ -15,7 +15,7 @@ export default function SurveyPage({ session, isAdmin }) {
   const [commutePainPoint, setCommutePainPoint] = useState('High Transit Costs / Peak Fares');
   const [desiredFeatures, setDesiredFeatures] = useState([]);
 
-  // Post-Submission States
+  // Claim States
   const [surveyStatus, setSurveyStatus] = useState('idle'); // idle | submitting | completed | claiming | claimed
   const [claimedReward, setClaimedReward] = useState('');
   const [acceptedTandC, setAcceptedTandC] = useState(false);
@@ -37,16 +37,26 @@ export default function SurveyPage({ session, isAdmin }) {
   }, [session]);
 
   const checkCompletionAndReward = async () => {
-    if (!session) return;
-    const { data } = await supabase.from('profiles').select('survey_completed, linkedin_reward_link').eq('id', session.user.id).single();
-    
-    if (data) {
-      if (data.linkedin_reward_link) {
-        setClaimedReward(data.linkedin_reward_link);
-        setSurveyStatus('claimed');
-      } else if (data.survey_completed) {
-        setSurveyStatus('completed');
+    if (!session?.user) return;
+    try {
+      const { data, error } = await supabase
+        .from('profiles')
+        .select('survey_completed, linkedin_reward_link')
+        .eq('id', session.user.id)
+        .maybeSingle();
+      
+      if (error) console.error("Error fetching profile:", error);
+
+      if (data) {
+        if (data.linkedin_reward_link) {
+          setClaimedReward(data.linkedin_reward_link);
+          setSurveyStatus('claimed');
+        } else if (data.survey_completed) {
+          setSurveyStatus('completed');
+        }
       }
+    } catch (e) {
+      console.error("Profile check exception:", e);
     }
   };
 
@@ -55,58 +65,92 @@ export default function SurveyPage({ session, isAdmin }) {
     else setDesiredFeatures([...desiredFeatures, feature]);
   };
 
-  // STEP 1: Submit the detailed survey
+  // STEP 1: Submit Survey
   const handleSurveySubmit = async (e) => {
     e.preventDefault();
-    if (!session) return showAlert("Sign In Required", "Please log in to submit your survey.", "error");
+    if (!session?.user) return showAlert("Sign In Required", "Please log in to submit your survey.", "error");
     if (desiredFeatures.length === 0) return showAlert("Selection Required", "Please select at least one feature in Question 8.", "error");
 
     setSurveyStatus('submitting');
     try {
       const fullFeedback = `[BOROUGH]: ${currentBorough}\n[TIMELINE]: ${movingTimeline}\n[PROPERTY]: ${propertyType}\n[BUDGET]: ${housingBudget}\n[COMMUTE TOLERANCE]: ${commuteTolerance}\n[PRIORITY]: ${primaryPriority}\n[PAIN POINT]: ${commutePainPoint}\n[FEATURES]: ${desiredFeatures.join(', ')}`;
 
-      // Save feedback
-      await supabase.from('user_feedback').insert([{ email: session.user.email, feedback_text: fullFeedback }]);
-      
-      // Update profile status
-      await supabase.from('profiles').update({ survey_completed: true }).eq('id', session.user.id);
-      
+      // Save user feedback
+      const { error: fbErr } = await supabase.from('user_feedback').insert([{ email: session.user.email, feedback_text: fullFeedback }]);
+      if (fbErr) console.error("Feedback insert error:", fbErr);
+
+      // Mark profile as survey_completed
+      const { error: profErr } = await supabase.from('profiles').update({ survey_completed: true }).eq('id', session.user.id);
+      if (profErr) console.error("Profile update error:", profErr);
+
       setSurveyStatus('completed');
     } catch (err) {
+      console.error("Survey submission error:", err);
       showAlert("Error", err.message, "error");
       setSurveyStatus('idle');
     }
   };
 
-  // STEP 2: Claim the reward after accepting T&Cs
+  // STEP 2: Claim Reward
   const handleClaimReward = async () => {
     if (!acceptedTandC) return showAlert("Action Required", "You must accept the Terms & Conditions to claim the LinkedIn Premium trial.", "error");
     
     setSurveyStatus('claiming');
     try {
-      const { data: availableLinks } = await supabase.from('linkedin_rewards').select('*').eq('is_used', false).limit(1);
+      // 1. Fetch available link
+      const { data: availableLinks, error: fetchErr } = await supabase
+        .from('linkedin_rewards')
+        .select('*')
+        .eq('is_used', false)
+        .limit(1);
+
+      if (fetchErr) {
+        console.error("Fetch available rewards error:", fetchErr);
+        throw fetchErr;
+      }
+
+      console.log("Fetched available links from DB:", availableLinks);
 
       if (!availableLinks || availableLinks.length === 0) {
-        showAlert("All Codes Claimed", "Wow! We've run out of promo codes for today. An admin will email you a code within 24 hours.", "success");
-        setSurveyStatus('completed'); // Revert so they don't get stuck
+        showAlert("All Codes Claimed", "Our promo code pool is currently empty. An admin will email you a code shortly!", "error");
+        setSurveyStatus('completed');
         return;
       }
 
       const selectedReward = availableLinks[0];
 
-      // Lock the code
-      await supabase.from('linkedin_rewards').update({
-        is_used: true, assigned_to_user_id: session.user.id, claimed_at: new Date().toISOString()
-      }).eq('id', selectedReward.id);
+      // 2. Mark code as used by current user
+      const { error: updateRewardErr } = await supabase
+        .from('linkedin_rewards')
+        .update({
+          is_used: true,
+          assigned_to_user_id: session.user.id,
+          claimed_at: new Date().toISOString()
+        })
+        .eq('id', selectedReward.id);
 
-      // Link to user profile
-      await supabase.from('profiles').update({ linkedin_reward_link: selectedReward.promo_link }).eq('id', session.user.id);
+      if (updateRewardErr) {
+        console.error("Reward assignment error:", updateRewardErr);
+        throw updateRewardErr;
+      }
+
+      // 3. Attach link to user profile
+      const { error: updateProfileErr } = await supabase
+        .from('profiles')
+        .update({ linkedin_reward_link: selectedReward.promo_link })
+        .eq('id', session.user.id);
+
+      if (updateProfileErr) {
+        console.error("Profile reward save error:", updateProfileErr);
+      }
 
       setClaimedReward(selectedReward.promo_link);
       setSurveyStatus('claimed');
       showAlert("🎉 Reward Unlocked!", "Your 2-Month LinkedIn Premium trial link is ready!", "success");
+
     } catch (err) {
-      showAlert("Error", err.message, "error");
+      console.error("Claim reward exception:", err);
+      showAlert("Error", err.message || "Failed to claim reward. Please check browser console.", "error");
       setSurveyStatus('completed');
     }
   };
@@ -129,14 +173,14 @@ export default function SurveyPage({ session, isAdmin }) {
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-8 pb-6 border-b border-slate-800">
           <div>
             <h2 className="text-3xl font-black text-white tracking-tight">KeelEngine Research Survey</h2>
-            <p className="text-slate-400 text-sm mt-1">This 2-minute survey helps us map the London housing crisis.</p>
+            <p className="text-slate-400 text-sm mt-1">This 2-minute survey helps us map the London housing market.</p>
           </div>
           <div className="self-start sm:self-auto bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 font-bold text-xs px-4 py-2 rounded-xl flex items-center gap-2">
             <span>🎁 Reward:</span> 2 Months LinkedIn Premium
           </div>
         </div>
 
-        {/* STATE: IDLE (Showing Survey) */}
+        {/* STATE: IDLE */}
         {surveyStatus === 'idle' || surveyStatus === 'submitting' ? (
           <form onSubmit={handleSurveySubmit} className="space-y-8 text-left">
             <div><label className="block text-sm font-bold text-emerald-400 uppercase tracking-wider mb-3">1. Where do you currently live?</label><select value={currentBorough} onChange={(e) => setCurrentBorough(e.target.value)} className="w-full bg-slate-900 border border-slate-700 rounded-xl px-5 py-4 text-white text-sm outline-none"><option>Outside London (Relocating)</option><option>Zone 1-2 (Central)</option><option>Zone 3-4 (Inner Suburbs)</option><option>Zone 5-6 (Outer Suburbs)</option></select></div>
@@ -163,7 +207,7 @@ export default function SurveyPage({ session, isAdmin }) {
           </form>
         ) : null}
 
-        {/* STATE: COMPLETED (Waiting for T&C acceptance) */}
+        {/* STATE: COMPLETED */}
         {surveyStatus === 'completed' || surveyStatus === 'claiming' ? (
           <div className="bg-slate-900/80 border border-emerald-500/40 p-8 rounded-2xl text-center animate-fadeIn">
             <span className="text-5xl block mb-4">✅</span>
@@ -185,7 +229,7 @@ export default function SurveyPage({ session, isAdmin }) {
           </div>
         ) : null}
 
-        {/* STATE: CLAIMED (Link Revealed) */}
+        {/* STATE: CLAIMED */}
         {surveyStatus === 'claimed' && (
           <div className="bg-slate-900/80 border border-emerald-500/40 p-8 rounded-2xl text-center animate-fadeIn">
             <span className="text-5xl block mb-4">🎉</span>
