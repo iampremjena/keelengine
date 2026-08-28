@@ -320,7 +320,7 @@ export default function Dashboard({ session }) {
       {/* 🏙️ SLEEK TOP BAR: LOGO + LONDON BADGE + LIVE TIME & WEATHER */}
       <div className="w-full bg-slate-900/80 border border-slate-800 rounded-2xl px-6 py-4 mb-8 flex flex-col sm:flex-row items-center justify-between gap-4 shadow-xl backdrop-blur-md">
         <div className="flex items-center gap-3">
-          <h1 className="text-2xl font-black text-white tracking-tight">KeelEngine</h1>
+          
           <span className="text-[10px] font-black font-mono uppercase tracking-widest text-emerald-400 border border-emerald-500/40 bg-emerald-500/10 px-2.5 py-1 rounded-md">
             LONDON
           </span>
