@@ -3,7 +3,7 @@ import { supabase } from '../supabaseClient';
 import AlertModal from '../components/AlertModal';
 
 export default function SurveyPage({ session }) {
-  useEffect(() => { document.title = "KeelEngine | Research Survey"; }, []);
+  useEffect(() => { document.title = "KeelEngine | AI Feature Access"; }, []);
 
   // Form Selection States
   const [currentBorough, setCurrentBorough] = useState('');
@@ -16,22 +16,15 @@ export default function SurveyPage({ session }) {
   const [workModel, setWorkModel] = useState('');
   const [desiredFeatures, setDesiredFeatures] = useState([]);
 
-  // Claim & Display States
-  const [surveyStatus, setSurveyStatus] = useState('idle'); // idle | submitting | completed | claiming | claimed
-  const [claimedReward, setClaimedReward] = useState('');
-  const [acceptedTandC, setAcceptedTandC] = useState(false);
-  const [copied, setCopied] = useState(false);
-
-  const defaultAbout = `🚀 Prem Jena | Lead Architect & Founder\n\nAs a Data Engineer and Full-Stack Architect, I built KeelEngine to solve a fundamental problem: the London housing market is opaque and mathematically exhausting to navigate.\n\nhttps://linkedin.com/in/iampremjena`;
-  const [aboutText] = useState(defaultAbout);
-
+  // Survey States
+  const [surveyStatus, setSurveyStatus] = useState('idle'); // idle | submitting | completed
   const [alertConfig, setAlertConfig] = useState({ isOpen: false, title: '', message: '', type: 'success' });
   const showAlert = (title, message, type) => setAlertConfig({ isOpen: true, title, message, type });
 
   const FEATURE_CHIPS = [
-    "School Zoning & Ratings", "Borough Council Tax Comparison", "Distance to Gyms & Parks", 
-    "Night Tube Line Access", "Broadband & Fiber Speed Filters", "CSV Export for Saved Properties",
-    "Pet-Friendly Rental Filters", "Crime Heatmaps"
+    "AI Conversational Search Bar", "Automated Landlord Email Writer", "Generative Neighborhood Vibe Check", 
+    "School Zoning & Ratings", "Borough Council Tax Calculator", "Night Tube Line Access", 
+    "Broadband Speed Filters", "Crime Heatmaps"
   ];
 
   const toggleFeatureChip = (feature) => {
@@ -52,7 +45,6 @@ export default function SurveyPage({ session }) {
     return true;
   };
 
-  // STEP 1: Log feedback to Database
   const handleSurveySubmit = async (e) => {
     e.preventDefault();
     if (!validateFormSelections()) return;
@@ -62,82 +54,13 @@ export default function SurveyPage({ session }) {
     const fullFeedback = `[BOROUGH]: ${currentBorough}\n[TIMELINE]: ${movingTimeline}\n[PROPERTY]: ${propertyType}\n[BUDGET]: ${housingBudget}\n[COMMUTE TOLERANCE]: ${commuteTolerance}\n[PRIORITY]: ${primaryPriority}\n[PAIN POINT]: ${commutePainPoint}\n[WORK MODEL]: ${workModel}\n[FEATURES]: ${desiredFeatures.join(', ')}`;
     const userEmail = session?.user?.email || 'Anonymous Guest';
 
-    const { error } = await supabase.from('user_feedback').insert([{ email: userEmail, feedback_text: fullFeedback }]);
-
-    if (error) {
-      console.error("Feedback Insert Error:", error);
-      showAlert("Notice", `Feedback submission issue: ${error.message}`, "error");
+    try {
+      await supabase.from('user_feedback').insert([{ email: userEmail, feedback_text: fullFeedback }]);
+    } catch (err) {
+      console.error("Feedback Save Note:", err);
     }
 
     setSurveyStatus('completed');
-  };
-
-  // STEP 2: Claim link directly from Database
-  const handleClaimReward = async () => {
-    if (!acceptedTandC) return showAlert("Action Required", "You must accept the Terms & Conditions to unlock the link.", "error");
-
-    setSurveyStatus('claiming');
-
-    try {
-      // 1. Fetch available link
-      const { data: availableLinks, error: fetchErr } = await supabase
-        .from('linkedin_rewards')
-        .select('*')
-        .eq('is_used', false)
-        .limit(1);
-
-      if (fetchErr) throw fetchErr;
-
-      if (!availableLinks || availableLinks.length === 0) {
-        showAlert("Pool Empty", "All promo codes have been claimed for today. An admin will email you shortly!", "error");
-        setSurveyStatus('completed');
-        return;
-      }
-
-      const selectedReward = availableLinks[0];
-
-      // 2. Mark code as claimed
-      const updatePayload = {
-        is_used: true,
-        claimed_at: new Date().toISOString()
-      };
-      if (session?.user?.id) {
-        updatePayload.assigned_to_user_id = session.user.id;
-      }
-
-      const { error: updateErr } = await supabase
-        .from('linkedin_rewards')
-        .update(updatePayload)
-        .eq('id', selectedReward.id);
-
-      if (updateErr) throw updateErr;
-
-      setClaimedReward(selectedReward.promo_link);
-      setSurveyStatus('claimed');
-      showAlert("🎉 Reward Unlocked!", "Your 2-Month LinkedIn Premium referral link is ready below!", "success");
-
-    } catch (err) {
-      console.error("Claim reward exception:", err);
-      showAlert("Claim Error", err.message || "Failed to fetch reward link.", "error");
-      setSurveyStatus('completed');
-    }
-  };
-
-  const copyToClipboard = () => {
-    navigator.clipboard.writeText(claimedReward);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 3000);
-  };
-
-  const renderAboutText = (text) => {
-    if (!text) return null;
-    const urlRegex = /(https?:\/\/[^\s]+)/g;
-    return text.split(urlRegex).map((part, i) => {
-      if (part.match(urlRegex) && part.includes('linkedin.com')) {
-        return <a key={i} href={part} target="_blank" rel="noreferrer" className="inline-flex items-center gap-2 mt-4 bg-[#0A66C2] hover:bg-[#004182] text-white font-bold py-3 px-6 rounded-xl text-sm transition shadow-lg border border-[#0A66C2]">🔗 Connect on LinkedIn</a>;
-      }
-      return <span key={i}>{part}</span>;
-    });
   };
 
   return (
@@ -147,11 +70,11 @@ export default function SurveyPage({ session }) {
       <div className="w-full md:w-2/3 glass p-8 md:p-10 rounded-3xl shadow-2xl border border-slate-700/40">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-8 pb-6 border-b border-slate-800">
           <div>
-            <h2 className="text-3xl font-black text-white tracking-tight">KeelEngine Research Survey</h2>
-            <p className="text-slate-400 text-sm mt-1">This 2-minute survey helps us map the London housing market.</p>
+            <h2 className="text-3xl font-black text-white tracking-tight">KeelEngine AI Product Roadmap</h2>
+            <p className="text-slate-400 text-sm mt-1">Help shape our upcoming Agentic AI search features.</p>
           </div>
           <div className="self-start sm:self-auto bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 font-bold text-xs px-4 py-2 rounded-xl flex items-center gap-2">
-            <span>🎁 Reward:</span> 2 Months LinkedIn Premium
+            <span>✨ Access:</span> AI Beta Waitlist
           </div>
         </div>
 
@@ -249,7 +172,7 @@ export default function SurveyPage({ session }) {
             </div>
 
             <div>
-              <label className="block text-sm font-bold text-emerald-400 uppercase tracking-wider mb-2">9. Which features should we build next?</label>
+              <label className="block text-sm font-bold text-emerald-400 uppercase tracking-wider mb-2">9. Which AI features should we prioritize?</label>
               <p className="text-xs text-slate-400 mb-4">Select all that apply:</p>
               <div className="flex flex-wrap gap-3">
                 {FEATURE_CHIPS.map((chip, idx) => {
@@ -262,64 +185,41 @@ export default function SurveyPage({ session }) {
             </div>
 
             <button type="submit" disabled={surveyStatus === 'submitting'} className="w-full bg-emerald-600 hover:bg-emerald-500 text-white font-bold py-4 rounded-xl shadow-xl transition text-sm">
-              {surveyStatus === 'submitting' ? 'Uploading Feedback...' : 'Submit 2-Minute Survey'}
+              {surveyStatus === 'submitting' ? 'Saving Responses...' : 'Submit Feedback & Join AI Beta'}
             </button>
           </form>
         )}
 
-        {/* T&C ACCEPTANCE */}
-        {(surveyStatus === 'completed' || surveyStatus === 'claiming') && (
+        {/* SUCCESS & AI BETA CONFIRMATION */}
+        {surveyStatus === 'completed' && (
           <div className="bg-slate-900/80 border border-emerald-500/40 p-8 rounded-2xl text-center animate-fadeIn">
-            <span className="text-5xl block mb-4">✅</span>
-            <h3 className="text-2xl font-black text-white mb-2">Survey Complete!</h3>
-            <p className="text-slate-300 text-sm mb-8">Thank you for your valuable feedback.</p>
+            <span className="text-5xl block mb-4">🤖</span>
+            <h3 className="text-2xl font-black text-white mb-2">You're on the AI Beta Waitlist!</h3>
+            <p className="text-slate-300 text-sm mb-6">Thank you for shaping KeelEngine's AI roadmap. We'll notify you as soon as conversational search and automated landlord outreach launch.</p>
             
             <div className="bg-slate-950 p-6 rounded-xl border border-slate-800 text-left">
-              <h4 className="text-white font-bold mb-4">Unlock Your Reward</h4>
-              <label className="flex items-start gap-3 cursor-pointer p-4 bg-slate-900 rounded-lg border border-slate-700 hover:border-slate-500 transition mb-6">
-                <input type="checkbox" checked={acceptedTandC} onChange={(e) => setAcceptedTandC(e.target.checked)} className="mt-1 accent-emerald-500 w-5 h-5" />
-                <span className="text-sm text-slate-300 leading-relaxed">
-                  <strong className="text-white">Terms & Conditions:</strong> I confirm that I currently do not have an active LinkedIn Premium subscription, and I have not used a free trial on my account in the recent past.
-                </span>
-              </label>
-              <button onClick={handleClaimReward} disabled={!acceptedTandC || surveyStatus === 'claiming'} className={`w-full font-black py-4 px-8 rounded-xl text-sm transition shadow-xl ${acceptedTandC ? 'bg-[#0A66C2] hover:bg-[#004182] text-white' : 'bg-slate-800 text-slate-500 cursor-not-allowed'}`}>
-                {surveyStatus === 'claiming' ? 'Fetching Code...' : 'Unlock 2 Months LinkedIn Premium'}
-              </button>
-            </div>
-          </div>
-        )}
-
-        {/* REWARD DISPLAY */}
-        {surveyStatus === 'claimed' && (
-          <div className="bg-slate-900/80 border border-emerald-500/40 p-8 rounded-2xl text-center animate-fadeIn">
-            <span className="text-5xl block mb-4">🎉</span>
-            <h3 className="text-2xl font-black text-white mb-2">Your Referral Link is Ready!</h3>
-            <p className="text-slate-400 text-sm mb-8">Copy the link below or click the button to open LinkedIn directly.</p>
-            
-            <div className="bg-slate-950 p-6 rounded-2xl border border-slate-800 text-left">
-              <span className="block text-xs text-emerald-400 uppercase font-bold mb-2">Exclusive Referral URL</span>
-              
-              <div className="flex flex-col sm:flex-row gap-3 mb-6">
-                <input type="text" readOnly value={claimedReward} className="w-full bg-slate-900 border border-slate-700 rounded-xl px-4 py-3 text-slate-300 font-mono text-xs outline-none" />
-                <button onClick={copyToClipboard} className="bg-slate-800 hover:bg-slate-700 text-white font-bold py-3 px-6 rounded-xl text-xs transition border border-slate-600 shadow-md whitespace-nowrap">
-                  {copied ? '✓ Copied!' : '📋 Copy Link'}
-                </button>
-              </div>
-
-              <a href={claimedReward} target="_blank" rel="noreferrer" className="block text-center bg-[#0A66C2] hover:bg-[#004182] text-white font-black py-4 px-8 rounded-xl text-sm transition shadow-xl border border-[#0A66C2]">
-                🚀 Open Link & Activate Trial on LinkedIn
-              </a>
+              <h4 className="text-xs font-bold text-emerald-400 uppercase mb-3">Next Up On Our Roadmap:</h4>
+              <ul className="text-slate-300 text-sm space-y-2">
+                <li className="flex items-center gap-2"><span>💬</span> <strong>Conversational Search:</strong> Query properties with natural prompts.</li>
+                <li className="flex items-center gap-2"><span>📊</span> <strong>AI Verdicts:</strong> Instant trade-off breakdowns on rent vs. TfL fares.</li>
+                <li className="flex items-center gap-2"><span>✉️</span> <strong>Auto-Outreach:</strong> 1-click tailored landlord viewing requests.</li>
+              </ul>
             </div>
           </div>
         )}
       </div>
 
+      {/* ABOUT DEVELOPER SIDEBAR */}
       <div className="w-full md:w-1/3">
         <div className="glass p-8 rounded-3xl shadow-2xl border border-emerald-900/30 sticky top-8">
-          <h3 className="text-xl font-black text-emerald-400 mb-6 border-b border-emerald-900/50 pb-4">About the Developer</h3>
-          <div className="text-slate-300 text-sm leading-relaxed whitespace-pre-wrap font-medium flex flex-col items-start">
-            {renderAboutText(aboutText)}
-          </div>
+          <h3 className="text-xl font-black text-emerald-400 mb-4 border-b border-emerald-900/50 pb-3">Prem Jena</h3>
+          <span className="text-xs font-bold text-slate-400 uppercase tracking-widest block mb-4">Lead Architect & AI Product Manager</span>
+          <p className="text-slate-300 text-sm leading-relaxed mb-6">
+            Building KeelEngine as an agentic AI platform to replace traditional, friction-heavy property search with autonomous multi-variable matching and real-cost optimization.
+          </p>
+          <a href="https://linkedin.com/in/iampremjena" target="_blank" rel="noreferrer" className="inline-flex items-center justify-center w-full gap-2 bg-[#0A66C2] hover:bg-[#004182] text-white font-bold py-3 px-6 rounded-xl text-sm transition shadow-lg border border-[#0A66C2]">
+            🔗 Connect on LinkedIn
+          </a>
         </div>
       </div>
     </div>
