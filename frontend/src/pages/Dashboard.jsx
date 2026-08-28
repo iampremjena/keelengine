@@ -15,8 +15,8 @@ const LONDON_AREAS = [
 ];
 
 const BONNIE_QUICK_PROMPTS = [
-  "How do I use this tool step-by-step?",
-  "How exactly are the TfL transit fares calculated?",
+  "How do I use KeelEngine step-by-step?",
+  "How does Clyde calculate TfL transit fares?",
   "What is a safe rent allowance percentage?"
 ];
 
@@ -42,11 +42,16 @@ function NeighborhoodMap({ lat, lng, neighborhood, targetDestination }) {
 }
 
 export default function Dashboard({ session }) {
-  useEffect(() => { document.title = "KeelEngine | Commute & Housing Finder"; }, []);
+  useEffect(() => { document.title = "KeelEngine London | Commute & Housing Finder"; }, []);
 
   const [searchParams, setSearchParams] = useSearchParams();
   const [searchMode, setSearchMode] = useState('manual');
   
+  // LIVE LONDON TIME & WEATHER WIDGET STATES
+  const [londonTime, setLondonTime] = useState('');
+  const [londonTemp, setLondonTemp] = useState('18°C');
+
+  // FORM STATES
   const [moveType, setMoveType] = useState(searchParams.get('move') || 'solo');
   const [grossSalary, setGrossSalary] = useState(Number(searchParams.get('salary')) || 50000);
   const [partnerSalary, setPartnerSalary] = useState(Number(searchParams.get('partner')) || 0);
@@ -68,40 +73,105 @@ export default function Dashboard({ session }) {
   const [listingsModal, setListingsModal] = useState({ isOpen: false, neighborhood: '', listings: [] });
   const [alertConfig, setAlertConfig] = useState({ isOpen: false, title: '', message: '', type: 'success' });
 
-  // Bonnie Chat States
+  // BONNIE CHATBOT & AUDIO CONTROLLER STATES
   const [isBonnieOpen, setIsBonnieOpen] = useState(false);
   const [chatMessages, setChatMessages] = useState([
-    { role: 'assistant', content: "Hi! I'm Bonnie 👋 How can I help you find your ideal London commute or answer questions about KeelEngine?" }
+    { role: 'assistant', content: "Hi! I'm Bonnie 👋 I guess Clyde didn't explain everything? Don't worry, I'm here as your support assistant. How can I help you today?" }
   ]);
   const [chatInput, setChatInput] = useState('');
   const [chatLoading, setChatLoading] = useState(false);
-  const [audioLoading, setAudioLoading] = useState(false);
+  
+  // Audio Playback Manager
+  const [activeAudioMsgIndex, setActiveAudioMsgIndex] = useState(null);
+  const [isAudioPlaying, setIsAudioPlaying] = useState(false);
+  const audioRef = useRef(null);
   const chatScrollRef = useRef(null);
 
   const showAlert = (title, message, type) => setAlertConfig({ isOpen: true, title, message, type });
   const hasSearched = searchParams.has('postcode') || searchParams.has('destination');
 
-  // OPENAI HIGH QUALITY VOICE ENGINE
-  const playBonnieAudio = async (text) => {
-    if (audioLoading) return;
-    setAudioLoading(true);
+  // LIVE LONDON TIME & WEATHER CLOCK EFFECT
+  useEffect(() => {
+    const updateTime = () => {
+      const now = new Date();
+      setLondonTime(now.toLocaleTimeString('en-GB', { timeZone: 'Europe/London', hour: '2-digit', minute: '2-digit' }) + ' BST');
+    };
+    updateTime();
+    const interval = setInterval(updateTime, 1000);
+
+    // Fetch Live London Temperature (Open-Meteo Free API)
+    fetch('https://api.open-meteo.com/v1/forecast?latitude=51.5074&longitude=-0.1278&current_weather=true')
+      .then(res => res.json())
+      .then(data => {
+        if (data?.current_weather?.temperature) {
+          setLondonTemp(`${Math.round(data.current_weather.temperature)}°C ⛅`);
+        }
+      })
+      .catch(() => {});
+
+    return () => clearInterval(interval);
+  }, []);
+
+  // BONNIE AUDIO CONTROLLER (Play / Pause / Stop)
+  const handleAudioToggle = async (text, msgIdx) => {
+    // If clicking on the currently playing message -> Toggle Pause/Play
+    if (activeAudioMsgIndex === msgIdx && audioRef.current) {
+      if (isAudioPlaying) {
+        audioRef.current.pause();
+        setIsAudioPlaying(false);
+      } else {
+        audioRef.current.play();
+        setIsAudioPlaying(true);
+      }
+      return;
+    }
+
+    // Stop any currently active audio
+    if (audioRef.current) {
+      audioRef.current.pause();
+      audioRef.current = null;
+    }
+
+    setActiveAudioMsgIndex(msgIdx);
+    setIsAudioPlaying(false);
+
     try {
       const response = await fetch('/api/tts', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ text })
       });
-      if (!response.ok) throw new Error("TTS failed");
+
+      if (!response.ok) throw new Error("Audio generation failed");
+
       const blob = await response.blob();
       const audioUrl = URL.createObjectURL(blob);
       const audio = new Audio(audioUrl);
+      
+      audioRef.current = audio;
+
+      audio.onended = () => {
+        setIsAudioPlaying(false);
+        setActiveAudioMsgIndex(null);
+      };
+
       audio.play();
+      setIsAudioPlaying(true);
     } catch (e) {
-      console.error(e);
-      showAlert("Audio Error", "Voice engine is currently sleeping.", "error");
-    } finally {
-      setAudioLoading(false);
+      showAlert("Voice Error", "Could not play Bonnie's voice.", "error");
+      setActiveAudioMsgIndex(null);
+      setIsAudioPlaying(false);
     }
+  };
+
+  const stopAudioCompletely = () => {
+    if (audioRef.current) {
+      audioRef.current.pause();
+      audioRef.current.currentTime = 0;
+      audioRef.current = null;
+    }
+    setIsAudioPlaying(false);
+    setActiveAudioMsgIndex(null);
   };
 
   const handleLocationType = (e) => {
@@ -229,12 +299,10 @@ export default function Dashboard({ session }) {
     if (chatScrollRef.current) chatScrollRef.current.scrollTop = chatScrollRef.current.scrollHeight;
   }, [chatMessages, isBonnieOpen]);
 
-  // SUPABASE POPULARITY TRACKER
   const handleListingsClick = async (hub) => {
     setListingsModal({ isOpen: true, neighborhood: hub.Neighborhood, listings: hub.live_listings || [] });
     try {
-      const { error } = await supabase.from('neighborhood_clicks').insert([{ neighborhood: hub.Neighborhood }]);
-      if (error) console.error("Analytics Log Error:", error.message);
+      await supabase.from('neighborhood_clicks').insert([{ neighborhood: hub.Neighborhood }]);
     } catch (e) {
       console.error("Failed to ping Supabase analytics", e);
     }
@@ -246,10 +314,30 @@ export default function Dashboard({ session }) {
   const totalPages = Math.ceil(results.length / itemsPerPage) || 1;
 
   return (
-    <div className="max-w-7xl mx-auto px-4 py-8 min-h-[85vh] relative">
+    <div className="max-w-7xl mx-auto px-4 py-6 min-h-[85vh] relative">
       <AlertModal {...alertConfig} onClose={() => setAlertConfig({ ...alertConfig, isOpen: false })} />
 
-      {/* 💬 BONNIE CHATBOT WITH TTS & FORMATTING */}
+      {/* 🏙️ SLEEK TOP BAR: LOGO + LONDON BADGE + LIVE TIME & WEATHER */}
+      <div className="w-full bg-slate-900/80 border border-slate-800 rounded-2xl px-6 py-4 mb-8 flex flex-col sm:flex-row items-center justify-between gap-4 shadow-xl backdrop-blur-md">
+        <div className="flex items-center gap-3">
+          <h1 className="text-2xl font-black text-white tracking-tight">KeelEngine</h1>
+          <span className="text-[10px] font-black font-mono uppercase tracking-widest text-emerald-400 border border-emerald-500/40 bg-emerald-500/10 px-2.5 py-1 rounded-md">
+            LONDON
+          </span>
+        </div>
+
+        <div className="flex items-center gap-6 text-xs font-mono text-slate-300">
+          <div className="flex items-center gap-2 bg-slate-950 px-3.5 py-1.5 rounded-xl border border-slate-800">
+            <span className="text-emerald-400">🕒</span>
+            <span>{londonTime || 'London Time'}</span>
+          </div>
+          <div className="flex items-center gap-2 bg-slate-950 px-3.5 py-1.5 rounded-xl border border-slate-800">
+            <span>{londonTemp}</span>
+          </div>
+        </div>
+      </div>
+
+      {/* 💬 BONNIE CHATBOT WIDGET WITH PLAY / PAUSE / STOP AUDIO CONTROLS */}
       <div className="fixed bottom-6 right-6 z-[200]">
         {!isBonnieOpen ? (
           <button onClick={() => setIsBonnieOpen(true)} className="bg-emerald-600 hover:bg-emerald-500 text-white font-bold px-5 py-4 rounded-full shadow-2xl transition flex items-center gap-2 border border-emerald-400/40">
@@ -257,27 +345,48 @@ export default function Dashboard({ session }) {
           </button>
         ) : (
           <div className="bg-slate-900 border border-emerald-500/40 rounded-3xl shadow-2xl w-80 sm:w-96 flex flex-col h-[520px] overflow-hidden animate-fadeIn">
+            {/* Header */}
             <div className="bg-slate-950 p-4 border-b border-slate-800 flex justify-between items-center">
-              <div className="flex items-center gap-2"><div className="w-3 h-3 bg-emerald-400 rounded-full animate-pulse"></div><h4 className="text-white font-bold text-sm">Bonnie — Support Assistant</h4></div>
+              <div className="flex items-center gap-2">
+                <div className="w-3 h-3 bg-emerald-400 rounded-full animate-pulse"></div>
+                <h4 className="text-white font-bold text-sm">Bonnie — Support Assistant</h4>
+              </div>
               <button onClick={() => setIsBonnieOpen(false)} className="text-slate-400 hover:text-white font-bold text-sm">✕</button>
             </div>
 
+            {/* Chat Body */}
             <div ref={chatScrollRef} className="flex-1 p-4 overflow-y-auto space-y-4 text-xs">
-              {chatMessages.map((msg, idx) => (
-                <div key={idx} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
-                  <div className={`max-w-[85%] p-4 rounded-2xl relative ${msg.role === 'user' ? 'bg-emerald-600 text-white' : 'bg-slate-950 text-slate-200 border border-slate-800'}`}>
-                    
-                    {/* Render HTML tags returned by Bonnie correctly */}
-                    <div dangerouslySetInnerHTML={{ __html: msg.content }} className="space-y-2 [&_ul]:list-disc [&_ul]:ml-4 [&_li]:mt-1" />
+              {chatMessages.map((msg, idx) => {
+                const isThisPlaying = activeAudioMsgIndex === idx && isAudioPlaying;
+                return (
+                  <div key={idx} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
+                    <div className={`max-w-[85%] p-4 rounded-2xl relative ${msg.role === 'user' ? 'bg-emerald-600 text-white' : 'bg-slate-950 text-slate-200 border border-slate-800'}`}>
+                      <div dangerouslySetInnerHTML={{ __html: msg.content }} className="space-y-2 [&_ul]:list-disc [&_ul]:ml-4 [&_li]:mt-1" />
 
-                    {msg.role === 'assistant' && (
-                      <button onClick={() => playBonnieAudio(msg.content)} disabled={audioLoading} className="absolute -right-8 bottom-1 text-slate-400 hover:text-emerald-400 p-1 transition" title="Listen">
-                        {audioLoading ? '⏳' : '🔊'}
-                      </button>
-                    )}
+                      {/* PLAY / PAUSE / STOP AUDIO BUTTONS */}
+                      {msg.role === 'assistant' && (
+                        <div className="mt-3 pt-2 border-t border-slate-800/80 flex items-center gap-2">
+                          <button 
+                            onClick={() => handleAudioToggle(msg.content, idx)} 
+                            className="bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 px-3 py-1 rounded-lg text-[10px] font-bold transition border border-emerald-500/30 flex items-center gap-1"
+                          >
+                            {isThisPlaying ? '⏸ Pause Voice' : '▶ Play Voice'}
+                          </button>
+                          
+                          {activeAudioMsgIndex === idx && (
+                            <button 
+                              onClick={stopAudioCompletely} 
+                              className="bg-red-500/10 hover:bg-red-500/20 text-red-400 px-2.5 py-1 rounded-lg text-[10px] font-bold transition border border-red-500/30"
+                            >
+                              ⏹ Stop
+                            </button>
+                          )}
+                        </div>
+                      )}
+                    </div>
                   </div>
-                </div>
-              ))}
+                );
+              })}
               
               {chatMessages.length === 1 && !chatLoading && (
                 <div className="flex flex-col gap-2 mt-2">
@@ -293,7 +402,7 @@ export default function Dashboard({ session }) {
             </div>
 
             <form onSubmit={(e) => { e.preventDefault(); sendChatMessage(chatInput); }} className="p-3 bg-slate-950 border-t border-slate-800 flex gap-2">
-              <input type="text" value={chatInput} onChange={(e) => setChatInput(e.target.value)} placeholder="Type a message..." className="flex-1 bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-white text-xs outline-none focus:border-emerald-500" />
+              <input type="text" value={chatInput} onChange={(e) => setChatInput(e.target.value)} placeholder="Ask Bonnie a question..." className="flex-1 bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-white text-xs outline-none focus:border-emerald-500" />
               <button type="submit" disabled={chatLoading} className="bg-emerald-600 hover:bg-emerald-500 text-white font-bold px-4 rounded-xl text-xs transition">Send</button>
             </form>
           </div>
@@ -335,12 +444,12 @@ export default function Dashboard({ session }) {
 
       <div className={`flex flex-col lg:flex-row gap-8 ${!hasSearched ? 'justify-center items-center' : 'items-start'}`}>
         
-        {/* LEFT SEARCH CONTROL FORM */}
+        {/* LEFT SEARCH CONTROL FORM (CLYDE PERSONA) */}
         <div className={`w-full ${!hasSearched ? 'max-w-xl' : 'lg:w-1/3 sticky top-8'}`}>
           <div className="glass p-8 rounded-3xl shadow-2xl border border-emerald-900/30">
             <div className="flex bg-slate-900 p-1.5 rounded-xl border border-slate-800 mb-6">
-              <button type="button" onClick={() => setSearchMode('manual')} className={`flex-1 py-2.5 rounded-lg text-xs font-bold transition ${searchMode === 'manual' ? 'bg-emerald-500 text-slate-950 shadow-md' : 'text-slate-400 hover:text-white'}`}>⚙️ Manual Form</button>
-              <button type="button" onClick={() => setSearchMode('ai')} className={`flex-1 py-2.5 rounded-lg text-xs font-bold transition ${searchMode === 'ai' ? 'bg-emerald-500 text-slate-950 shadow-md' : 'text-slate-400 hover:text-white'}`}>✨ Smart Assistant</button>
+              <button type="button" onClick={() => setSearchMode('manual')} className={`flex-1 py-2.5 rounded-lg text-xs font-bold transition ${searchMode === 'manual' ? 'bg-emerald-500 text-slate-950 shadow-md' : 'text-slate-400 hover:text-white'}`}>⚙️ Manual Search</button>
+              <button type="button" onClick={() => setSearchMode('ai')} className={`flex-1 py-2.5 rounded-lg text-xs font-bold transition ${searchMode === 'ai' ? 'bg-emerald-500 text-slate-950 shadow-md' : 'text-slate-400 hover:text-white'}`}>✨ Ask Clyde</button>
             </div>
 
             {searchMode === 'manual' && (
@@ -402,25 +511,25 @@ export default function Dashboard({ session }) {
                   )}
                 </div>
 
-                <button type="submit" className="w-full bg-emerald-600 hover:bg-emerald-500 text-white font-bold py-4 rounded-xl transition shadow-xl text-sm">Compute Matches ➔</button>
+                <button type="submit" className="w-full bg-emerald-600 hover:bg-emerald-500 text-white font-bold py-4 rounded-xl transition shadow-xl text-sm">Let Clyde Find Matches ➔</button>
               </form>
             )}
 
             {searchMode === 'ai' && (
               <form onSubmit={handleAiSubmit} className="space-y-4 text-left">
                 <div>
-                  <label className="block text-xs font-bold text-emerald-400 uppercase tracking-wider mb-2">Smart Search Prompt</label>
+                  <label className="block text-xs font-bold text-emerald-400 uppercase tracking-wider mb-2">Tell Clyde What You Need</label>
                   <textarea value={aiPromptText} onChange={(e) => setAiPromptText(e.target.value)} placeholder="e.g., I work in Canary Wharf 3 days a week, earn £65k, and need a 1-bed flat..." className="w-full h-40 bg-slate-900 border border-slate-700 rounded-xl p-4 text-white text-sm outline-none resize-none focus:border-emerald-500 transition" />
                 </div>
                 <button type="submit" className="w-full bg-emerald-600 hover:bg-emerald-500 text-white font-bold py-4 rounded-xl transition shadow-xl text-sm flex items-center justify-center gap-2">
-                  <span>✨</span> Process & Search
+                  <span>✨</span> Let Clyde Search
                 </button>
               </form>
             )}
           </div>
         </div>
 
-        {/* RIGHT RESULTS DISPLAY */}
+        {/* RIGHT RESULTS DISPLAY (CLYDE PERSONA) */}
         {hasSearched && (
           <div className="w-full lg:w-2/3 space-y-6">
             <div className="flex justify-between items-center bg-slate-900/60 p-4 rounded-2xl border border-slate-700/50 shadow-md">
@@ -431,7 +540,7 @@ export default function Dashboard({ session }) {
             {loading && (
               <div className="glass rounded-3xl py-28 text-center border border-emerald-500/30">
                 <div className="w-12 h-12 border-4 border-emerald-500 border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
-                <p className="text-emerald-400 font-bold text-sm">Calculating travel options to {activeDestination}...</p>
+                <p className="text-emerald-400 font-bold text-sm">Clyde is researching London transit topologies to {activeDestination}...</p>
                 <p className="text-xs text-slate-400 mt-1">Gathering 10 neighborhood suggestions and live property listings...</p>
               </div>
             )}
@@ -462,7 +571,6 @@ export default function Dashboard({ session }) {
 
                   {/* TOOLTIP HOVER METRICS GRID */}
                   <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-5">
-                    
                     <div className="bg-slate-950 p-3.5 rounded-xl border border-slate-800">
                       <span className="block text-[10px] text-slate-400 uppercase font-bold">Rent Allocation</span>
                       <span className="text-emerald-400 font-bold text-sm">{hub.Rent_Range}</span>
@@ -497,7 +605,8 @@ export default function Dashboard({ session }) {
                   </div>
 
                   <div className="bg-slate-950/80 p-4 rounded-xl border border-slate-800 mb-6 text-xs leading-relaxed text-slate-300">
-                    <span className="text-[10px] font-bold text-emerald-400 uppercase tracking-widest block mb-1">KeelEngine Verdict</span><p>{hub.AI_Verdict}</p>
+                    <span className="text-[10px] font-bold text-emerald-400 uppercase tracking-widest block mb-1">Clyde's Verdict</span>
+                    <p>{hub.AI_Verdict}</p>
                   </div>
 
                   {/* ACTION BUTTONS */}

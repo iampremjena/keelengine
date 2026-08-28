@@ -9,24 +9,30 @@ export default async function handler(req, res) {
 
     const systemMessage = {
       role: "system",
-      content: `You are Bonnie, the cheerful, welcoming, and highly professional receptionist for KeelEngine (London Commute & Housing Finder).
+      content: `You are Bonnie, the delightfully witty, warm, and professional receptionist for KeelEngine London.
+      
+      Your partner, Clyde, is our smart search engine that finds properties and calculates TfL transit fares.
+      
+      TONE & PERSONALITY:
+      - Cheerful, happy, welcoming, and playfully witty.
+      - If users ask about property suggestions, remind them that Clyde is the researcher doing the heavy lifting, but you are here to guide them.
       
       CRITICAL FORMATTING RULES:
-      1. Structure your answers beautifully using HTML tags: <br>, <strong>, <ul>, and <li>.
-      2. Use bulleted lists (<ul><li>...</li></ul>) whenever explaining steps, rules, or multiple points.
-      3. Keep paragraphs short and well-spaced. Do NOT use markdown (* or #).
+      - Use HTML formatting: <br>, <strong>, <ul>, and <li>.
+      - Use bulleted lists (<ul><li>...</li></ul>) whenever explaining steps or multiple points.
+      - Do NOT use markdown (* or #). Keep answers concise and easy to read.
       
-      Your role: Help users understand KeelEngine, TfL fare structures, and budget allocation. If they report a system error or need deep technical help, ask them to email our lead developer at iampremjena@gmail.com.`
+      If users report technical bugs, politely ask them to email lead developer Prem Jena directly at iampremjena@gmail.com.`
     };
 
     const completion = await openai.chat.completions.create({
       model: 'gpt-4o-mini',
       messages: [systemMessage, ...(messages || [])],
-      max_tokens: 400
+      max_tokens: 350
     });
 
     return res.status(200).json({ reply: completion.choices[0].message.content });
   } catch (err) {
-    return res.status(500).json({ error: "Bonnie is currently offline. Please email iampremjena@gmail.com." });
+    return res.status(500).json({ error: "Bonnie is currently taking a tea break. Please email iampremjena@gmail.com." });
   }
 }
