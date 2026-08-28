@@ -296,7 +296,7 @@ export default function Dashboard({ session }) {
       {/* 🏙️ SLEEK TOP BAR: RESPONSIVE FLEX WITH SLEEK FONTS */}
       <div className="w-full bg-slate-900/80 border border-slate-800 rounded-2xl px-4 sm:px-6 py-3 sm:py-4 mb-6 sm:mb-8 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 shadow-xl backdrop-blur-md">
         <div className="flex items-center gap-2 sm:gap-3">
-          <h1 className="text-xl sm:text-2xl font-black text-white tracking-tight">KeelEngine</h1>
+          
           <span className="text-[9px] sm:text-[10px] font-black font-mono uppercase tracking-widest text-emerald-400 border border-emerald-500/40 bg-emerald-500/10 px-2 py-0.5 rounded-md mt-0.5 sm:mt-1">
             LONDON
           </span>
