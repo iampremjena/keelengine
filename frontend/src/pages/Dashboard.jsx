@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { supabase } from '../supabaseClient';
 import AlertModal from '../components/AlertModal';
@@ -10,10 +10,8 @@ import markerShadow from 'leaflet/dist/images/marker-shadow.png';
 let DefaultIcon = L.icon({ iconUrl: markerIcon, shadowUrl: markerShadow, iconSize: [25, 41], iconAnchor: [12, 41] });
 L.Marker.prototype.options.icon = DefaultIcon;
 
-// Map Component with dynamic route to user's office destination
 function NeighborhoodMap({ lat, lng, neighborhood, targetDestination }) {
   if (!lat || !lng) return <div className="w-full h-44 rounded-2xl bg-slate-800/50 border border-slate-700/50 flex items-center justify-center mb-5"><span className="text-slate-500 text-xs font-mono">Map Syncing...</span></div>;
-  
   const googleMapsUrl = `https://www.google.com/maps/dir/?api=1&origin=${lat},${lng}&destination=${encodeURIComponent(targetDestination)}&travelmode=transit`;
 
   return (
@@ -36,7 +34,7 @@ function NeighborhoodMap({ lat, lng, neighborhood, targetDestination }) {
 }
 
 export default function Dashboard({ session }) {
-  useEffect(() => { document.title = "KeelEngine AI | Commute & Housing Finder"; }, []);
+  useEffect(() => { document.title = "KeelEngine | Commute & Housing Finder"; }, []);
 
   const [searchParams, setSearchParams] = useSearchParams();
   const [searchMode, setSearchMode] = useState('manual');
@@ -48,16 +46,29 @@ export default function Dashboard({ session }) {
   const [officeDays, setOfficeDays] = useState(Number(searchParams.get('days')) || 3);
   const [officeLocation, setOfficeLocation] = useState(searchParams.get('postcode') || searchParams.get('destination') || '');
   const [propertyType, setPropertyType] = useState(searchParams.get('type') || '1-Bed Private Flat');
-  
   const [aiPromptText, setAiPromptText] = useState('');
 
   const [loading, setLoading] = useState(false);
   const [results, setResults] = useState([]);
   const [errorMsg, setErrorMsg] = useState('');
 
+  // Pagination State (5 items per page)
+  const [currentPage, setCurrentPage] = useState(1);
+  const itemsPerPage = 5;
+
+  // Listings Modal State
   const [listingsModal, setListingsModal] = useState({ isOpen: false, neighborhood: '', listings: [] });
   const [alertConfig, setAlertConfig] = useState({ isOpen: false, title: '', message: '', type: 'success' });
-  
+
+  // Bonnie Chatbot States
+  const [isBonnieOpen, setIsBonnieOpen] = useState(false);
+  const [chatMessages, setChatMessages] = useState([
+    { role: 'assistant', content: "Hi! I'm Bonnie 👋 How can I help you find your ideal London commute or answer questions about KeelEngine?" }
+  ]);
+  const [chatInput, setChatInput] = useState('');
+  const [chatLoading, setChatLoading] = useState(false);
+  const chatScrollRef = useRef(null);
+
   const showAlert = (title, message, type) => setAlertConfig({ isOpen: true, title, message, type });
   const hasSearched = searchParams.has('postcode') || searchParams.has('destination');
 
@@ -91,20 +102,16 @@ export default function Dashboard({ session }) {
     });
   };
 
-  // Improved AI Prompt Parser extracting either Postcodes OR Area Names
   const handleAiSubmit = (e) => {
     e.preventDefault();
     const text = aiPromptText.trim();
     if (!text) return showAlert("Input Required", "Please describe your ideal property setup.", "error");
 
     let extractedDestination = officeLocation;
-
-    // 1. Try Postcode pattern match
     const pcMatch = text.match(/\b([A-Z]{1,2}[0-9][A-Z0-9]?\s?[0-9][ABD-HJLNP-UW-Z]{2})\b/i);
     if (pcMatch) {
       extractedDestination = pcMatch[0].toUpperCase();
     } else {
-      // 2. Try target phrase extraction e.g. "in Canary Wharf", "near Bank", "at Soho"
       const locationMatch = text.match(/(?:in|near|at|around|to)\s+([A-Za-z0-9\s]+?)(?:,|\.|for|\d|\$|£|days|days\/week|$)/i);
       if (locationMatch && locationMatch[1].trim().length > 2) {
         extractedDestination = locationMatch[1].trim();
@@ -152,7 +159,7 @@ export default function Dashboard({ session }) {
     const activeTotalBudget = Math.round((netVal1 + netVal2) * (urlBudget / 100));
 
     const runCompute = async () => {
-      setLoading(true); setErrorMsg(''); setResults([]);
+      setLoading(true); setErrorMsg(''); setResults([]); setCurrentPage(1);
 
       if (session?.user) {
         supabase.from('search_analytics').insert([{ gross_salary: urlSalary, office_postcode: targetDest }]).then();
@@ -171,7 +178,7 @@ export default function Dashboard({ session }) {
           })
         });
 
-        if (!res.ok) throw new Error("Server communication issue. Please check Vercel functions.");
+        if (!res.ok) throw new Error("Server communication issue. Please try again.");
         
         const data = await res.json();
         if (data.error) setErrorMsg(data.error);
@@ -186,6 +193,42 @@ export default function Dashboard({ session }) {
     runCompute();
   }, [searchParams, session]);
 
+  // Bonnie Chatbot Message Handler
+  const sendChatMessage = async (e) => {
+    e.preventDefault();
+    if (!chatInput.trim() || chatLoading) return;
+
+    const userMsg = { role: 'user', content: chatInput.trim() };
+    const updatedMessages = [...chatMessages, userMsg];
+    setChatMessages(updatedMessages);
+    setChatInput('');
+    setChatLoading(true);
+
+    try {
+      const res = await fetch('/api/chat', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ messages: updatedMessages })
+      });
+      const data = await res.json();
+      if (data.reply) {
+        setChatMessages([...updatedMessages, { role: 'assistant', content: data.reply }]);
+      } else {
+        throw new Error();
+      }
+    } catch (err) {
+      setChatMessages([...updatedMessages, { role: 'assistant', content: "I'm having trouble connecting right now. Please feel free to email our developer directly at iampremjena@gmail.com." }]);
+    } finally {
+      setChatLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    if (chatScrollRef.current) {
+      chatScrollRef.current.scrollTop = chatScrollRef.current.scrollHeight;
+    }
+  }, [chatMessages, isBonnieOpen]);
+
   const saveProperty = async (hub) => {
     if (!session) return showAlert("Sign In Required", "Please log in to save properties.", "error");
     try {
@@ -199,21 +242,81 @@ export default function Dashboard({ session }) {
 
   const activeDestination = searchParams.get('destination') || searchParams.get('postcode') || officeLocation;
 
+  // Pagination Slicing (5 per page)
+  const indexOfLastItem = currentPage * itemsPerPage;
+  const currentItems = results.slice(indexOfLastItem - itemsPerPage, indexOfLastItem);
+  const totalPages = Math.ceil(results.length / itemsPerPage) || 1;
+
   return (
-    <div className="max-w-7xl mx-auto px-4 py-8 min-h-[85vh]">
+    <div className="max-w-7xl mx-auto px-4 py-8 min-h-[85vh] relative">
       <AlertModal {...alertConfig} onClose={() => setAlertConfig({ ...alertConfig, isOpen: false })} />
 
-      {/* ✨ AI SUGGESTED LISTINGS MODAL */}
+      {/* 💬 FLOATING BONNIE CHATBOT WIDGET */}
+      <div className="fixed bottom-6 right-6 z-[200]">
+        {!isBonnieOpen ? (
+          <button 
+            onClick={() => setIsBonnieOpen(true)}
+            className="bg-emerald-600 hover:bg-emerald-500 text-white font-bold px-5 py-4 rounded-full shadow-2xl transition flex items-center gap-2 border border-emerald-400/40"
+          >
+            <span>💬 Ask Bonnie</span>
+          </button>
+        ) : (
+          <div className="bg-slate-900 border border-emerald-500/40 rounded-3xl shadow-2xl w-80 sm:w-96 flex flex-col h-[480px] overflow-hidden animate-fadeIn">
+            {/* Header */}
+            <div className="bg-slate-950 p-4 border-b border-slate-800 flex justify-between items-center">
+              <div className="flex items-center gap-2">
+                <div className="w-3 h-3 bg-emerald-400 rounded-full animate-pulse"></div>
+                <h4 className="text-white font-bold text-sm">Bonnie — Support Assistant</h4>
+              </div>
+              <button onClick={() => setIsBonnieOpen(false)} className="text-slate-400 hover:text-white font-bold text-sm">✕</button>
+            </div>
+
+            {/* Chat Body */}
+            <div ref={chatScrollRef} className="flex-1 p-4 overflow-y-auto space-y-3 text-xs">
+              {chatMessages.map((msg, idx) => (
+                <div key={idx} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
+                  <div className={`max-w-[85%] p-3 rounded-2xl ${msg.role === 'user' ? 'bg-emerald-600 text-white' : 'bg-slate-950 text-slate-200 border border-slate-800'}`}>
+                    {msg.content}
+                  </div>
+                </div>
+              ))}
+              {chatLoading && (
+                <div className="flex justify-start">
+                  <div className="bg-slate-950 text-slate-400 p-3 rounded-2xl border border-slate-800 animate-pulse">
+                    Bonnie is thinking...
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* Chat Form */}
+            <form onSubmit={sendChatMessage} className="p-3 bg-slate-950 border-t border-slate-800 flex gap-2">
+              <input 
+                type="text" 
+                value={chatInput} 
+                onChange={(e) => setChatInput(e.target.value)} 
+                placeholder="Ask about TfL fares, zones, or help..."
+                className="flex-1 bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-white text-xs outline-none focus:border-emerald-500"
+              />
+              <button type="submit" disabled={chatLoading} className="bg-emerald-600 hover:bg-emerald-500 text-white font-bold px-4 rounded-xl text-xs transition">
+                Send
+              </button>
+            </form>
+          </div>
+        )}
+      </div>
+
+      {/* SUGGESTED LISTINGS MODAL */}
       {listingsModal.isOpen && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-950/80 backdrop-blur-md px-4 animate-fadeIn">
           <div className="bg-slate-900 border border-emerald-500/50 p-6 md:p-8 rounded-3xl shadow-2xl max-w-2xl w-full">
             <div className="flex justify-between items-center mb-4">
               <h3 className="text-xl font-bold text-white flex items-center gap-2">
-                <span>✨</span> AI Suggested Listings: {listingsModal.neighborhood}
+                <span>🏘️</span> Suggested Listings: {listingsModal.neighborhood}
               </h3>
               <button onClick={() => setListingsModal({ ...listingsModal, isOpen: false })} className="text-slate-400 hover:text-white font-bold text-lg">✕</button>
             </div>
-            <p className="text-xs text-slate-400 mb-6">Showing live property search results for <strong>{searchParams.get('type') || propertyType}</strong> near {listingsModal.neighborhood}:</p>
+            <p className="text-xs text-slate-400 mb-6">Property options for <strong>{searchParams.get('type') || propertyType}</strong> near {listingsModal.neighborhood}:</p>
             
             <div className="space-y-3 max-h-80 overflow-y-auto pr-2 mb-6">
               {listingsModal.listings && listingsModal.listings.length > 0 ? (
@@ -224,11 +327,16 @@ export default function Dashboard({ session }) {
                   </a>
                 ))
               ) : (
-                <div className="text-center py-8 bg-slate-950 rounded-xl border border-slate-800">
-                  <p className="text-slate-400 text-xs mb-3">Searching live portals...</p>
-                  <a href={`https://www.rightmove.co.uk/property-to-rent/search.html?searchLocation=${listingsModal.neighborhood}`} target="_blank" rel="noreferrer" className="inline-block bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs px-5 py-2.5 rounded-xl">
-                    Search Directly on Rightmove ➔
-                  </a>
+                <div className="text-center py-6 bg-slate-950 rounded-xl border border-slate-800 space-y-3">
+                  <p className="text-slate-400 text-xs">Search directly on top UK property portals:</p>
+                  <div className="flex flex-wrap justify-center gap-3">
+                    <a href={`https://www.rightmove.co.uk/property-to-rent/search.html?searchLocation=${listingsModal.neighborhood}`} target="_blank" rel="noreferrer" className="bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs px-4 py-2 rounded-xl">
+                      Search Rightmove ➔
+                    </a>
+                    <a href={`https://www.zoopla.co.uk/to-rent/property/${listingsModal.neighborhood.toLowerCase()}/`} target="_blank" rel="noreferrer" className="bg-blue-600 hover:bg-blue-500 text-white font-bold text-xs px-4 py-2 rounded-xl">
+                      Search Zoopla ➔
+                    </a>
+                  </div>
                 </div>
               )}
             </div>
@@ -251,7 +359,7 @@ export default function Dashboard({ session }) {
                 ⚙️ Manual Form
               </button>
               <button type="button" onClick={() => setSearchMode('ai')} className={`flex-1 py-2.5 rounded-lg text-xs font-bold transition ${searchMode === 'ai' ? 'bg-emerald-500 text-slate-950 shadow-md' : 'text-slate-400 hover:text-white'}`}>
-                ✨ AI Assistant
+                ✨ Smart Assistant
               </button>
             </div>
 
@@ -320,7 +428,7 @@ export default function Dashboard({ session }) {
                 </div>
 
                 <button type="submit" className="w-full bg-emerald-600 hover:bg-emerald-500 text-white font-bold py-4 rounded-xl transition shadow-xl text-sm">
-                  Compute AI Matches ➔
+                  Compute Matches ➔
                 </button>
               </form>
             )}
@@ -328,11 +436,11 @@ export default function Dashboard({ session }) {
             {searchMode === 'ai' && (
               <form onSubmit={handleAiSubmit} className="space-y-4 text-left">
                 <div>
-                  <label className="block text-xs font-bold text-emerald-400 uppercase tracking-wider mb-2">AI Natural Language Assistant</label>
+                  <label className="block text-xs font-bold text-emerald-400 uppercase tracking-wider mb-2">Smart Search Prompt</label>
                   <textarea value={aiPromptText} onChange={(e) => setAiPromptText(e.target.value)} placeholder="e.g., I work in Canary Wharf 3 days a week, earn £65k, and need a 1-bed flat..." className="w-full h-40 bg-slate-900 border border-slate-700 rounded-xl p-4 text-white text-sm outline-none resize-none focus:border-emerald-500 transition" />
                 </div>
                 <button type="submit" className="w-full bg-emerald-600 hover:bg-emerald-500 text-white font-bold py-4 rounded-xl transition shadow-xl text-sm flex items-center justify-center gap-2">
-                  <span>✨</span> Parse Intent & Run AI Search
+                  <span>✨</span> Process & Search
                 </button>
               </form>
             )}
@@ -352,8 +460,8 @@ export default function Dashboard({ session }) {
             {loading && (
               <div className="glass rounded-3xl py-28 text-center border border-emerald-500/30">
                 <div className="w-12 h-12 border-4 border-emerald-500 border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
-                <p className="text-emerald-400 font-bold text-sm">Computing travel topologies to {activeDestination}...</p>
-                <p className="text-xs text-slate-400 mt-1">Calculating step-by-step route timings and TfL peak fares...</p>
+                <p className="text-emerald-400 font-bold text-sm">Calculating travel options to {activeDestination}...</p>
+                <p className="text-xs text-slate-400 mt-1">Gathering 10 neighborhood suggestions and TfL fare metrics...</p>
               </div>
             )}
 
@@ -363,7 +471,7 @@ export default function Dashboard({ session }) {
               </div>
             )}
 
-            {!loading && results.map((hub, idx) => {
+            {!loading && currentItems.map((hub, idx) => {
               const singleFare = parseFloat(hub.Single_Fare_Cost || 0);
               const daysNum = Number(searchParams.get('days')) || 3;
               const monthlyFareTotal = Math.round(singleFare * 2 * daysNum * 4.33);
@@ -382,16 +490,13 @@ export default function Dashboard({ session }) {
                     </div>
                   </div>
 
-                  {/* INTERACTIVE LEAFLET MAP WITH DYNAMIC ROUTE TO DESTINATION */}
                   <NeighborhoodMap lat={hub.Latitude} lng={hub.Longitude} neighborhood={hub.Neighborhood} targetDestination={activeDestination} />
 
-                  {/* COMMUTE STEP-BY-STEP BREAKDOWN TO DESTINATION */}
                   <div className="bg-slate-950 p-4 rounded-2xl border border-slate-800 mb-5">
                     <span className="text-[10px] font-bold text-blue-400 uppercase tracking-widest block mb-1">⏱️ Route to {activeDestination} ({hub.Commute_Duration} Mins)</span>
                     <p className="text-xs text-slate-200 font-medium leading-relaxed">{hub.Journey_Breakdown}</p>
                   </div>
 
-                  {/* METRICS GRID */}
                   <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-5">
                     <div className="bg-slate-950 p-3.5 rounded-xl border border-slate-800">
                       <span className="block text-[10px] text-slate-400 uppercase font-bold">Rent Allocation</span>
@@ -411,25 +516,22 @@ export default function Dashboard({ session }) {
                     </div>
                   </div>
 
-                  {/* TFL FARE EXPLANATION */}
                   <div className="bg-slate-900/60 p-4 rounded-xl border border-slate-800 mb-5 text-[11px] text-slate-400">
                     <span className="font-bold text-slate-300 block mb-1">💡 How TfL Fare is calculated:</span>
                     {hub.TfL_Fare_Explanation}
                   </div>
 
-                  {/* AI VERDICT */}
                   <div className="bg-slate-950/80 p-4 rounded-xl border border-slate-800 mb-6 text-xs leading-relaxed text-slate-300">
-                    <span className="text-[10px] font-bold text-emerald-400 uppercase tracking-widest block mb-1">✨ KeelEngine AI Verdict</span>
+                    <span className="text-[10px] font-bold text-emerald-400 uppercase tracking-widest block mb-1">KeelEngine Verdict</span>
                     <p>{hub.AI_Verdict}</p>
                   </div>
 
-                  {/* ACTION BUTTONS */}
                   <div className="flex flex-col sm:flex-row gap-3">
                     <button 
                       onClick={() => setListingsModal({ isOpen: true, neighborhood: hub.Neighborhood, listings: hub.live_listings || [] })} 
                       className="flex-1 bg-emerald-600 hover:bg-emerald-500 text-white font-bold py-3.5 px-4 rounded-xl text-xs transition shadow-lg flex items-center justify-center gap-1.5"
                     >
-                      <span>✨</span> AI Suggested Listings
+                      <span>🏘️</span> Suggested Listings
                     </button>
                     <a 
                       href={`https://www.google.com/maps/dir/?api=1&origin=${hub.Latitude},${hub.Longitude}&destination=${encodeURIComponent(activeDestination)}&travelmode=transit`} 
@@ -450,6 +552,29 @@ export default function Dashboard({ session }) {
                 </div>
               );
             })}
+
+            {/* 5-PER-PAGE PAGINATION CONTROLS */}
+            {!loading && results.length > 0 && (
+              <div className="flex justify-between items-center bg-slate-900/80 p-4 rounded-2xl border border-slate-800 shadow-xl">
+                <button 
+                  onClick={() => setCurrentPage(prev => Math.max(prev - 1, 1))} 
+                  disabled={currentPage === 1}
+                  className="px-5 py-2.5 bg-slate-800 hover:bg-slate-700 disabled:opacity-30 text-white font-bold text-xs rounded-xl transition border border-slate-700"
+                >
+                  ← Previous
+                </button>
+                <span className="text-xs text-slate-300 font-bold">
+                  Page {currentPage} of {totalPages} ({results.length} total options)
+                </span>
+                <button 
+                  onClick={() => setCurrentPage(prev => Math.min(prev + 1, totalPages))} 
+                  disabled={currentPage === totalPages}
+                  className="px-5 py-2.5 bg-slate-800 hover:bg-slate-700 disabled:opacity-30 text-white font-bold text-xs rounded-xl transition border border-slate-700"
+                >
+                  Next →
+                </button>
+              </div>
+            )}
 
           </div>
         )}

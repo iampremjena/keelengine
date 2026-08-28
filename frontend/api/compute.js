@@ -11,8 +11,6 @@ export default async function handler(req, res) {
 
   try {
     const { destination, postcode, days_per_week = 3, property_type = "1-Bed Private Flat", total_budget = 1800 } = req.body || {};
-
-    // Support both explicit destination parameter and postcode fallback
     const targetOfficeLocation = (destination || postcode || '').trim();
 
     if (!targetOfficeLocation) {
@@ -26,32 +24,28 @@ export default async function handler(req, res) {
 
     const openai = new OpenAI({ apiKey });
 
-    // Strict prompt locking all journey calculations to the user's destination
     const prompt = `
       TARGET OFFICE DESTINATION: '${targetOfficeLocation}'
       COMMUTE FREQUENCY: ${days_per_week} days/week.
-      PROPERTY ALLOCATION: '${property_type}'.
+      PROPERTY TYPE: '${property_type}'.
       MAX TOTAL MONTHLY BUDGET (Rent + TfL): £${total_budget}.
 
-      CRITICAL MANDATE:
-      All suggested neighborhoods, commute durations, TfL fares, and step-by-step route breakdowns MUST be calculated specifically with '${targetOfficeLocation}' as the final destination.
-
-      Suggest 4 realistic London commuter neighborhoods/stations for someone working at '${targetOfficeLocation}'.
+      Suggest EXACTLY 10 realistic, diverse London commuter neighborhoods/stations suitable for someone working at '${targetOfficeLocation}'.
       For each neighborhood, return:
-      1. Exact Latitude and Longitude for mapping pins.
+      1. Exact Latitude and Longitude coordinates.
       2. Rent_Range for '${property_type}'.
-      3. Commute_Duration: Real estimated transit duration in minutes specifically to '${targetOfficeLocation}'.
-      4. Journey_Breakdown: A step-by-step route explicitly showing travel from the neighborhood station directly to '${targetOfficeLocation}' (e.g., 'Walk 4 mins to Clapham Junction ➔ Overground (14 mins) to Canada Water ➔ Jubilee Line to ${targetOfficeLocation}').
-      5. Single_Fare_Cost: TfL Peak single fare in GBP between the neighborhood zone and '${targetOfficeLocation}' zone.
-      6. TfL_Fare_Explanation: Explicit breakdown (e.g., 'Zone 2 to Zone 1 Peak fare is £3.40. (£3.40 x 2 x ${days_per_week} days x 4.33 weeks = £${Math.round(3.40 * 2 * days_per_week * 4.33)}/mo)').
-      7. Safety_Score out of 100 based on London Met Police data.
-      8. AI_Verdict: 2 sentences explaining why this neighborhood is an optimal commute match specifically for '${targetOfficeLocation}'.
+      3. Commute_Duration: Estimated transit duration in minutes specifically to '${targetOfficeLocation}'.
+      4. Journey_Breakdown: Step-by-step route travel directly to '${targetOfficeLocation}'.
+      5. Single_Fare_Cost: TfL Peak single fare in GBP to '${targetOfficeLocation}' zone.
+      6. TfL_Fare_Explanation: Explicit breakdown showing math (£fare x 2 x ${days_per_week} days x 4.33 = £total/mo).
+      7. Safety_Score out of 100 based on crime statistics.
+      8. AI_Verdict: 2 sentences explaining why this neighborhood matches '${targetOfficeLocation}'.
     `;
 
     const completion = await openai.chat.completions.create({
       model: 'gpt-4o-mini',
       messages: [
-        { role: 'system', content: 'You are KeelEngine AI. Return strictly valid JSON adhering to the schema.' },
+        { role: 'system', content: 'You are KeelEngine. Return strictly valid JSON with 10 hubs.' },
         { role: 'user', content: prompt }
       ],
       response_format: {
@@ -95,14 +89,14 @@ export default async function handler(req, res) {
 
     const parsed = JSON.parse(completion.choices[0].message.content || '{"hubs":[]}');
 
-    // Tavily Live Web Scraping tied to the target property allocation
+    // Fetch Live Web Listings via Tavily in Parallel
     const tavilyKey = process.env.TAVILY_API_KEY;
     if (tavilyKey && parsed.hubs && parsed.hubs.length > 0) {
       await Promise.allSettled(
         parsed.hubs.map(async (hub) => {
           try {
             const controller = new AbortController();
-            const timeoutId = setTimeout(() => controller.abort(), 3000);
+            const timeoutId = setTimeout(() => controller.abort(), 2500);
 
             const tavRes = await fetch('https://api.tavily.com/search', {
               method: 'POST',
@@ -128,7 +122,7 @@ export default async function handler(req, res) {
     return res.status(200).json(parsed);
 
   } catch (err) {
-    console.error("OpenAI Execution Error:", err);
-    return res.status(500).json({ error: `AI Search Error: ${err.message}` });
+    console.error("Compute Error:", err);
+    return res.status(500).json({ error: `Search Error: ${err.message}` });
   }
 }
