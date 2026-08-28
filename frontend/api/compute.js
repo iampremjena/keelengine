@@ -13,14 +13,10 @@ export default async function handler(req, res) {
     const { destination, postcode, days_per_week = 3, property_type = "1-Bed Private Flat", total_budget = 1800 } = req.body || {};
     const targetOfficeLocation = (destination || postcode || '').trim();
 
-    if (!targetOfficeLocation) {
-      return res.status(400).json({ error: 'Office target location or postcode is required.' });
-    }
+    if (!targetOfficeLocation) return res.status(400).json({ error: 'Office target location is required.' });
 
     const apiKey = process.env.OPENAI_API_KEY;
-    if (!apiKey) {
-      return res.status(500).json({ error: "OPENAI_API_KEY is missing in Vercel settings." });
-    }
+    if (!apiKey) return res.status(500).json({ error: "OPENAI_API_KEY is missing." });
 
     const openai = new OpenAI({ apiKey });
 
@@ -30,16 +26,16 @@ export default async function handler(req, res) {
       PROPERTY TYPE: '${property_type}'.
       MAX TOTAL MONTHLY BUDGET (Rent + TfL): £${total_budget}.
 
-      Suggest EXACTLY 10 realistic, diverse London commuter neighborhoods/stations suitable for someone working at '${targetOfficeLocation}'.
+      Suggest EXACTLY 10 realistic, diverse London commuter neighborhoods suitable for working at '${targetOfficeLocation}'.
       For each neighborhood, return:
-      1. Exact Latitude and Longitude coordinates.
+      1. Latitude and Longitude.
       2. Rent_Range for '${property_type}'.
-      3. Commute_Duration: Estimated transit duration in minutes specifically to '${targetOfficeLocation}'.
-      4. Journey_Breakdown: Step-by-step route travel directly to '${targetOfficeLocation}'.
-      5. Single_Fare_Cost: TfL Peak single fare in GBP to '${targetOfficeLocation}' zone.
-      6. TfL_Fare_Explanation: Explicit breakdown showing math (£fare x 2 x ${days_per_week} days x 4.33 = £total/mo).
-      7. Safety_Score out of 100 based on crime statistics.
-      8. AI_Verdict: 2 sentences explaining why this neighborhood matches '${targetOfficeLocation}'.
+      3. Commute_Duration to '${targetOfficeLocation}'.
+      4. Journey_Breakdown directly to '${targetOfficeLocation}'.
+      5. Single_Fare_Cost (TfL Peak single fare).
+      6. TfL_Fare_Explanation.
+      7. Safety_Score (out of 100).
+      8. AI_Verdict (2 sentences).
     `;
 
     const completion = await openai.chat.completions.create({
@@ -60,20 +56,11 @@ export default async function handler(req, res) {
                 items: {
                   type: "object",
                   properties: {
-                    Neighborhood: { type: "string" },
-                    Station_Outcode: { type: "string" },
-                    Borough: { type: "string" },
-                    Latitude: { type: "number" },
-                    Longitude: { type: "number" },
-                    Rent_Range: { type: "string" },
-                    Commute_Duration: { type: "number" },
-                    Journey_Breakdown: { type: "string" },
-                    Line_Route: { type: "string" },
-                    Single_Fare_Cost: { type: "number" },
-                    TfL_Fare_Explanation: { type: "string" },
-                    Safety_Score: { type: "number" },
-                    Suggestion_Score: { type: "number" },
-                    AI_Verdict: { type: "string" }
+                    Neighborhood: { type: "string" }, Station_Outcode: { type: "string" }, Borough: { type: "string" },
+                    Latitude: { type: "number" }, Longitude: { type: "number" }, Rent_Range: { type: "string" },
+                    Commute_Duration: { type: "number" }, Journey_Breakdown: { type: "string" }, Line_Route: { type: "string" },
+                    Single_Fare_Cost: { type: "number" }, TfL_Fare_Explanation: { type: "string" },
+                    Safety_Score: { type: "number" }, Suggestion_Score: { type: "number" }, AI_Verdict: { type: "string" }
                   },
                   required: ["Neighborhood", "Station_Outcode", "Borough", "Latitude", "Longitude", "Rent_Range", "Commute_Duration", "Journey_Breakdown", "Line_Route", "Single_Fare_Cost", "TfL_Fare_Explanation", "Safety_Score", "Suggestion_Score", "AI_Verdict"],
                   additionalProperties: false
@@ -89,14 +76,14 @@ export default async function handler(req, res) {
 
     const parsed = JSON.parse(completion.choices[0].message.content || '{"hubs":[]}');
 
-    // Fetch Live Web Listings via Tavily in Parallel
+    // Stricter Tavily Search for actual property listing URLs
     const tavilyKey = process.env.TAVILY_API_KEY;
     if (tavilyKey && parsed.hubs && parsed.hubs.length > 0) {
       await Promise.allSettled(
         parsed.hubs.map(async (hub) => {
           try {
             const controller = new AbortController();
-            const timeoutId = setTimeout(() => controller.abort(), 2500);
+            const timeoutId = setTimeout(() => controller.abort(), 3500);
 
             const tavRes = await fetch('https://api.tavily.com/search', {
               method: 'POST',
@@ -104,14 +91,18 @@ export default async function handler(req, res) {
               signal: controller.signal,
               body: JSON.stringify({
                 api_key: tavilyKey,
-                query: `site:rightmove.co.uk OR site:zoopla.co.uk ${property_type} to rent in ${hub.Neighborhood} ${hub.Station_Outcode}`,
+                query: `${property_type} to rent in ${hub.Neighborhood} London site:rightmove.co.uk/properties OR site:zoopla.co.uk/to-rent/details`,
                 search_depth: "basic",
                 max_results: 3
               })
             });
             clearTimeout(timeoutId);
             const tavData = await tavRes.json();
-            hub.live_listings = (tavData.results || []).map(r => ({ title: r.title, url: r.url }));
+            
+            // Filter to only include actual listing links, not generic search pages
+            hub.live_listings = (tavData.results || [])
+              .filter(r => r.url.includes('/properties/') || r.url.includes('/details/') || r.url.includes('openrent'))
+              .map(r => ({ title: r.title, url: r.url }));
           } catch (e) {
             hub.live_listings = [];
           }
@@ -120,9 +111,7 @@ export default async function handler(req, res) {
     }
 
     return res.status(200).json(parsed);
-
   } catch (err) {
-    console.error("Compute Error:", err);
     return res.status(500).json({ error: `Search Error: ${err.message}` });
   }
 }
