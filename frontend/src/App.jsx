@@ -54,7 +54,7 @@ function AppContent() {
             </button>
             <div className="flex flex-wrap justify-center items-center gap-6 text-sm font-semibold text-slate-400">
               <button onClick={() => navigate('/home')} className={`hover:text-white transition ${location.pathname === '/home' ? 'text-emerald-400' : ''}`}>Dashboard</button>
-              <button onClick={() => navigate('/updates')} className={`hover:text-white transition ${location.pathname === '/updates' ? 'text-emerald-400' : ''}`}>Updates 📢</button>
+              <button onClick={() => navigate('/updates')} className={`hover:text-white transition ${location.pathname === '/updates' ? 'text-emerald-400' : ''}`}>Updates</button>
               <button onClick={() => navigate('/about')} className={`hover:text-white transition ${location.pathname === '/about' ? 'text-emerald-400' : ''}`}>About</button>
               
               {/* ADMIN ONLY LINK */}
