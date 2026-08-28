@@ -10,9 +10,14 @@ export default async function handler(req, res) {
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
 
   try {
-    const { postcode, days_per_week = 3, property_type = "1-Bed Private Flat", total_budget = 1800 } = req.body || {};
+    const { destination, postcode, days_per_week = 3, property_type = "1-Bed Private Flat", total_budget = 1800 } = req.body || {};
 
-    if (!postcode) return res.status(400).json({ error: 'Office postcode is required.' });
+    // Support both explicit destination parameter and postcode fallback
+    const targetOfficeLocation = (destination || postcode || '').trim();
+
+    if (!targetOfficeLocation) {
+      return res.status(400).json({ error: 'Office target location or postcode is required.' });
+    }
 
     const apiKey = process.env.OPENAI_API_KEY;
     if (!apiKey) {
@@ -21,19 +26,26 @@ export default async function handler(req, res) {
 
     const openai = new OpenAI({ apiKey });
 
+    // Strict prompt locking all journey calculations to the user's destination
     const prompt = `
-      User works near London postcode '${postcode}' and commutes ${days_per_week} days/week.
-      Property allocation: '${property_type}'. Maximum total monthly outgoings (Rent + TfL travel): £${total_budget}.
+      TARGET OFFICE DESTINATION: '${targetOfficeLocation}'
+      COMMUTE FREQUENCY: ${days_per_week} days/week.
+      PROPERTY ALLOCATION: '${property_type}'.
+      MAX TOTAL MONTHLY BUDGET (Rent + TfL): £${total_budget}.
 
-      Suggest 4 realistic London neighborhoods suitable for this commuter. 
-      For each neighborhood, calculate:
-      1. Exact latitude and longitude for mapping pins.
-      2. Realistic rent range for '${property_type}'.
-      3. A step-by-step Journey_Breakdown (e.g. '5 min walk to Angel Station ➔ Northern Line (12 mins) to Bank ➔ 4 min walk to office').
-      4. Single_Fare_Cost in GBP for TfL Peak travel.
-      5. TfL_Fare_Explanation explicitly detailing how the monthly transit cost is calculated (e.g., 'Zone 2 to Zone 1 Peak single fare is £3.40. (£3.40 x 2 journeys x ${days_per_week} days x 4.33 weeks = £${Math.round(3.40 * 2 * days_per_week * 4.33)}/mo)').
-      6. Safety_Score out of 100 based on London Met Police data.
-      7. AI_Verdict explaining the trade-offs.
+      CRITICAL MANDATE:
+      All suggested neighborhoods, commute durations, TfL fares, and step-by-step route breakdowns MUST be calculated specifically with '${targetOfficeLocation}' as the final destination.
+
+      Suggest 4 realistic London commuter neighborhoods/stations for someone working at '${targetOfficeLocation}'.
+      For each neighborhood, return:
+      1. Exact Latitude and Longitude for mapping pins.
+      2. Rent_Range for '${property_type}'.
+      3. Commute_Duration: Real estimated transit duration in minutes specifically to '${targetOfficeLocation}'.
+      4. Journey_Breakdown: A step-by-step route explicitly showing travel from the neighborhood station directly to '${targetOfficeLocation}' (e.g., 'Walk 4 mins to Clapham Junction ➔ Overground (14 mins) to Canada Water ➔ Jubilee Line to ${targetOfficeLocation}').
+      5. Single_Fare_Cost: TfL Peak single fare in GBP between the neighborhood zone and '${targetOfficeLocation}' zone.
+      6. TfL_Fare_Explanation: Explicit breakdown (e.g., 'Zone 2 to Zone 1 Peak fare is £3.40. (£3.40 x 2 x ${days_per_week} days x 4.33 weeks = £${Math.round(3.40 * 2 * days_per_week * 4.33)}/mo)').
+      7. Safety_Score out of 100 based on London Met Police data.
+      8. AI_Verdict: 2 sentences explaining why this neighborhood is an optimal commute match specifically for '${targetOfficeLocation}'.
     `;
 
     const completion = await openai.chat.completions.create({
@@ -83,7 +95,7 @@ export default async function handler(req, res) {
 
     const parsed = JSON.parse(completion.choices[0].message.content || '{"hubs":[]}');
 
-    // Fetch Live Web Listings via Tavily for the target property type
+    // Tavily Live Web Scraping tied to the target property allocation
     const tavilyKey = process.env.TAVILY_API_KEY;
     if (tavilyKey && parsed.hubs && parsed.hubs.length > 0) {
       await Promise.allSettled(

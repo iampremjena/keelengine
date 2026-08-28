@@ -10,11 +10,11 @@ import markerShadow from 'leaflet/dist/images/marker-shadow.png';
 let DefaultIcon = L.icon({ iconUrl: markerIcon, shadowUrl: markerShadow, iconSize: [25, 41], iconAnchor: [12, 41] });
 L.Marker.prototype.options.icon = DefaultIcon;
 
-// Interactive Map Component with Location Pin
-function NeighborhoodMap({ lat, lng, neighborhood, postcode }) {
+// Map Component with dynamic route to user's office destination
+function NeighborhoodMap({ lat, lng, neighborhood, targetDestination }) {
   if (!lat || !lng) return <div className="w-full h-44 rounded-2xl bg-slate-800/50 border border-slate-700/50 flex items-center justify-center mb-5"><span className="text-slate-500 text-xs font-mono">Map Syncing...</span></div>;
   
-  const googleMapsUrl = `https://www.google.com/maps/dir/?api=1&origin=${lat},${lng}&destination=${encodeURIComponent(postcode)}&travelmode=transit`;
+  const googleMapsUrl = `https://www.google.com/maps/dir/?api=1&origin=${lat},${lng}&destination=${encodeURIComponent(targetDestination)}&travelmode=transit`;
 
   return (
     <div className="w-full h-48 rounded-2xl overflow-hidden border border-slate-700/50 mb-5 relative z-0">
@@ -25,7 +25,7 @@ function NeighborhoodMap({ lat, lng, neighborhood, postcode }) {
             <div className="text-center p-1">
               <strong className="block text-slate-900 font-bold">{neighborhood}</strong>
               <a href={googleMapsUrl} target="_blank" rel="noreferrer" className="text-xs text-blue-600 font-bold underline block mt-1">
-                Open Google Maps Route ➔
+                Route to {targetDestination} ➔
               </a>
             </div>
           </Popup>
@@ -36,7 +36,7 @@ function NeighborhoodMap({ lat, lng, neighborhood, postcode }) {
 }
 
 export default function Dashboard({ session }) {
-  useEffect(() => { document.title = "KeelEngine AI | Property & Commute Intelligence"; }, []);
+  useEffect(() => { document.title = "KeelEngine AI | Commute & Housing Finder"; }, []);
 
   const [searchParams, setSearchParams] = useSearchParams();
   const [searchMode, setSearchMode] = useState('manual');
@@ -46,7 +46,7 @@ export default function Dashboard({ session }) {
   const [partnerSalary, setPartnerSalary] = useState(Number(searchParams.get('partner')) || 0);
   const [budgetSlider, setBudgetSlider] = useState(Number(searchParams.get('budget')) || 40);
   const [officeDays, setOfficeDays] = useState(Number(searchParams.get('days')) || 3);
-  const [postcode, setPostcode] = useState(searchParams.get('postcode') || '');
+  const [officeLocation, setOfficeLocation] = useState(searchParams.get('postcode') || searchParams.get('destination') || '');
   const [propertyType, setPropertyType] = useState(searchParams.get('type') || '1-Bed Private Flat');
   
   const [aiPromptText, setAiPromptText] = useState('');
@@ -55,12 +55,11 @@ export default function Dashboard({ session }) {
   const [results, setResults] = useState([]);
   const [errorMsg, setErrorMsg] = useState('');
 
-  // AI Suggestions Listings Modal State
   const [listingsModal, setListingsModal] = useState({ isOpen: false, neighborhood: '', listings: [] });
   const [alertConfig, setAlertConfig] = useState({ isOpen: false, title: '', message: '', type: 'success' });
   
   const showAlert = (title, message, type) => setAlertConfig({ isOpen: true, title, message, type });
-  const hasSearched = searchParams.has('postcode');
+  const hasSearched = searchParams.has('postcode') || searchParams.has('destination');
 
   const calculateNetMonthly = (gross) => {
     let tax = 0;
@@ -78,10 +77,11 @@ export default function Dashboard({ session }) {
 
   const triggerManualSearch = (e) => {
     e.preventDefault();
-    if (!postcode.trim()) return showAlert("Postcode Required", "Please enter your office postcode.", "error");
+    if (!officeLocation.trim()) return showAlert("Location Required", "Please enter an office postcode or location name.", "error");
     
     setSearchParams({ 
-      postcode: postcode.toUpperCase().trim(), 
+      postcode: officeLocation.trim().toUpperCase(), 
+      destination: officeLocation.trim(),
       move: moveType, 
       salary: grossSalary, 
       partner: partnerSalary, 
@@ -91,36 +91,55 @@ export default function Dashboard({ session }) {
     });
   };
 
+  // Improved AI Prompt Parser extracting either Postcodes OR Area Names
   const handleAiSubmit = (e) => {
     e.preventDefault();
-    const text = aiPromptText.toLowerCase().trim();
-    if (!text) return showAlert("Input Required", "Please describe your ideal property.", "error");
+    const text = aiPromptText.trim();
+    if (!text) return showAlert("Input Required", "Please describe your ideal property setup.", "error");
 
-    let extractedPostcode = postcode || "E16 1US";
+    let extractedDestination = officeLocation;
+
+    // 1. Try Postcode pattern match
     const pcMatch = text.match(/\b([A-Z]{1,2}[0-9][A-Z0-9]?\s?[0-9][ABD-HJLNP-UW-Z]{2})\b/i);
-    if (pcMatch) extractedPostcode = pcMatch[0].toUpperCase();
+    if (pcMatch) {
+      extractedDestination = pcMatch[0].toUpperCase();
+    } else {
+      // 2. Try target phrase extraction e.g. "in Canary Wharf", "near Bank", "at Soho"
+      const locationMatch = text.match(/(?:in|near|at|around|to)\s+([A-Za-z0-9\s]+?)(?:,|\.|for|\d|\$|£|days|days\/week|$)/i);
+      if (locationMatch && locationMatch[1].trim().length > 2) {
+        extractedDestination = locationMatch[1].trim();
+      }
+    }
 
-    const salMatch = text.match(/([0-9]{2,3})\s*k/);
+    const lowerText = text.toLowerCase();
+    const salMatch = lowerText.match(/([0-9]{2,3})\s*k/);
     const extractedSalary = salMatch ? parseInt(salMatch[1]) * 1000 : grossSalary;
 
-    const daysMatch = text.match(/([1-5])\s*days/);
+    const daysMatch = lowerText.match(/([1-5])\s*days/);
     const extractedDays = daysMatch ? parseInt(daysMatch[1]) : officeDays;
 
     let extractedType = propertyType;
-    if (text.includes("studio")) extractedType = "Studio Flat";
-    else if (text.includes("2 bed") || text.includes("2-bed")) extractedType = "2-Bed Flat";
-    else if (text.includes("room") || text.includes("share")) extractedType = "Shared Flatshare / Room";
+    if (lowerText.includes("studio")) extractedType = "Studio Flat";
+    else if (lowerText.includes("2 bed") || lowerText.includes("2-bed")) extractedType = "2-Bed Flat";
+    else if (lowerText.includes("room") || lowerText.includes("share")) extractedType = "Shared Flatshare / Room";
 
-    setPostcode(extractedPostcode); setGrossSalary(extractedSalary); setOfficeDays(extractedDays); setPropertyType(extractedType);
+    setOfficeLocation(extractedDestination); setGrossSalary(extractedSalary); setOfficeDays(extractedDays); setPropertyType(extractedType);
 
     setSearchParams({ 
-      postcode: extractedPostcode, move: moveType, salary: extractedSalary, partner: partnerSalary, budget: budgetSlider, days: extractedDays, type: extractedType
+      postcode: extractedDestination,
+      destination: extractedDestination,
+      move: moveType, 
+      salary: extractedSalary, 
+      partner: partnerSalary, 
+      budget: budgetSlider, 
+      days: extractedDays, 
+      type: extractedType
     });
   };
 
   useEffect(() => {
-    const pc = searchParams.get('postcode');
-    if (!pc) return;
+    const targetDest = searchParams.get('destination') || searchParams.get('postcode');
+    if (!targetDest) return;
 
     const urlSalary = Number(searchParams.get('salary')) || 50000;
     const urlPartner = Number(searchParams.get('partner')) || 0;
@@ -136,14 +155,20 @@ export default function Dashboard({ session }) {
       setLoading(true); setErrorMsg(''); setResults([]);
 
       if (session?.user) {
-        supabase.from('search_analytics').insert([{ gross_salary: urlSalary, office_postcode: pc }]).then();
+        supabase.from('search_analytics').insert([{ gross_salary: urlSalary, office_postcode: targetDest }]).then();
       }
 
       try {
         const res = await fetch(`/api/compute`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ postcode: pc, days_per_week: urlDays, property_type: urlType, total_budget: activeTotalBudget })
+          body: JSON.stringify({ 
+            destination: targetDest,
+            postcode: targetDest, 
+            days_per_week: urlDays, 
+            property_type: urlType, 
+            total_budget: activeTotalBudget 
+          })
         });
 
         if (!res.ok) throw new Error("Server communication issue. Please check Vercel functions.");
@@ -171,6 +196,8 @@ export default function Dashboard({ session }) {
       showAlert("Saved!", `${hub.Neighborhood} saved to your profile.`, "success");
     } catch (e) { showAlert("Error", "Could not save property.", "error"); }
   };
+
+  const activeDestination = searchParams.get('destination') || searchParams.get('postcode') || officeLocation;
 
   return (
     <div className="max-w-7xl mx-auto px-4 py-8 min-h-[85vh]">
@@ -288,8 +315,8 @@ export default function Dashboard({ session }) {
                 </div>
 
                 <div>
-                  <label className="block text-xs font-bold text-slate-300 uppercase mb-2">Office Postcode Target</label>
-                  <input type="text" placeholder="e.g. EC1A 1BB or E16 1US" required value={postcode} onChange={(e) => setPostcode(e.target.value)} className="w-full bg-slate-900 border border-slate-700 rounded-xl px-4 py-4 font-mono text-white outline-none uppercase text-sm" />
+                  <label className="block text-xs font-bold text-slate-300 uppercase mb-2">Office Location or Postcode</label>
+                  <input type="text" placeholder="e.g. Canary Wharf, Bank, or E16 1US" required value={officeLocation} onChange={(e) => setOfficeLocation(e.target.value)} className="w-full bg-slate-900 border border-slate-700 rounded-xl px-4 py-4 font-mono text-white outline-none uppercase text-sm" />
                 </div>
 
                 <button type="submit" className="w-full bg-emerald-600 hover:bg-emerald-500 text-white font-bold py-4 rounded-xl transition shadow-xl text-sm">
@@ -318,15 +345,15 @@ export default function Dashboard({ session }) {
           <div className="w-full lg:w-2/3 space-y-6">
             
             <div className="flex justify-between items-center bg-slate-900/60 p-4 rounded-2xl border border-slate-700/50 shadow-md">
-              <span className="text-slate-300 text-sm">Showing AI results for <strong className="text-white font-mono">{searchParams.get('postcode')}</strong></span>
-              <span className="text-xs bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 font-bold px-3 py-1.5 rounded-lg">Budget: £{computedTotalBudget}/mo</span>
+              <span className="text-slate-300 text-sm">Destination Target: <strong className="text-white font-mono">{activeDestination}</strong></span>
+              <span className="text-xs bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 font-bold px-3 py-1.5 rounded-lg">Ceiling: £{computedTotalBudget}/mo</span>
             </div>
 
             {loading && (
               <div className="glass rounded-3xl py-28 text-center border border-emerald-500/30">
                 <div className="w-12 h-12 border-4 border-emerald-500 border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
-                <p className="text-emerald-400 font-bold text-sm">Orchestrating OpenAI Reasoning Models...</p>
-                <p className="text-xs text-slate-400 mt-1">Calculating TfL peak fares and mapping step-by-step commute routes...</p>
+                <p className="text-emerald-400 font-bold text-sm">Computing travel topologies to {activeDestination}...</p>
+                <p className="text-xs text-slate-400 mt-1">Calculating step-by-step route timings and TfL peak fares...</p>
               </div>
             )}
 
@@ -355,12 +382,12 @@ export default function Dashboard({ session }) {
                     </div>
                   </div>
 
-                  {/* INTERACTIVE LEAFLET MAP WITH PIN */}
-                  <NeighborhoodMap lat={hub.Latitude} lng={hub.Longitude} neighborhood={hub.Neighborhood} postcode={searchParams.get('postcode')} />
+                  {/* INTERACTIVE LEAFLET MAP WITH DYNAMIC ROUTE TO DESTINATION */}
+                  <NeighborhoodMap lat={hub.Latitude} lng={hub.Longitude} neighborhood={hub.Neighborhood} targetDestination={activeDestination} />
 
-                  {/* COMMUTE STEP-BY-STEP BREAKDOWN */}
+                  {/* COMMUTE STEP-BY-STEP BREAKDOWN TO DESTINATION */}
                   <div className="bg-slate-950 p-4 rounded-2xl border border-slate-800 mb-5">
-                    <span className="text-[10px] font-bold text-blue-400 uppercase tracking-widest block mb-1">⏱️ Journey Breakdown ({hub.Commute_Duration} Mins Total)</span>
+                    <span className="text-[10px] font-bold text-blue-400 uppercase tracking-widest block mb-1">⏱️ Route to {activeDestination} ({hub.Commute_Duration} Mins)</span>
                     <p className="text-xs text-slate-200 font-medium leading-relaxed">{hub.Journey_Breakdown}</p>
                   </div>
 
@@ -396,7 +423,7 @@ export default function Dashboard({ session }) {
                     <p>{hub.AI_Verdict}</p>
                   </div>
 
-                  {/* ACTION BUTTONS WITH RESTORED AI SUGGESTED LISTINGS BUTTON */}
+                  {/* ACTION BUTTONS */}
                   <div className="flex flex-col sm:flex-row gap-3">
                     <button 
                       onClick={() => setListingsModal({ isOpen: true, neighborhood: hub.Neighborhood, listings: hub.live_listings || [] })} 
@@ -405,7 +432,7 @@ export default function Dashboard({ session }) {
                       <span>✨</span> AI Suggested Listings
                     </button>
                     <a 
-                      href={`https://www.google.com/maps/dir/?api=1&origin=${hub.Latitude},${hub.Longitude}&destination=${encodeURIComponent(searchParams.get('postcode'))}&travelmode=transit`} 
+                      href={`https://www.google.com/maps/dir/?api=1&origin=${hub.Latitude},${hub.Longitude}&destination=${encodeURIComponent(activeDestination)}&travelmode=transit`} 
                       target="_blank" 
                       rel="noreferrer" 
                       className="flex-1 bg-blue-600 hover:bg-blue-500 text-white font-bold py-3.5 px-4 rounded-xl text-center text-xs transition shadow-lg"
