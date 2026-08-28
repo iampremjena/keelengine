@@ -85,9 +85,12 @@ function NeighborhoodMap({ lat, lng }) {
 
 export default function Dashboard({ session }) {
   const navigate = useNavigate();
-  useEffect(() => { document.title = "KeelEngine | Search"; }, []);
+  useEffect(() => { document.title = "KeelEngine AI | Smart Search"; }, []);
 
   const [searchParams, setSearchParams] = useSearchParams();
+  
+  const [searchMode, setSearchMode] = useState('ai'); // 'ai' or 'manual'
+  const [aiPromptText, setAiPromptText] = useState('');
   
   const [moveType, setMoveType] = useState(searchParams.get('move') || 'solo');
   const [grossSalary, setGrossSalary] = useState(Number(searchParams.get('salary')) || 50000);
@@ -103,7 +106,7 @@ export default function Dashboard({ session }) {
   const itemsPerPage = 5;
 
   const [alertConfig, setAlertConfig] = useState({ isOpen: false, title: '', message: '', type: 'success' });
-  const [showSurveyModal, setShowSurveyModal] = useState(false);
+  const [emailModal, setEmailModal] = useState({ isOpen: false, neighborhood: '', emailText: '' });
   
   const showAlert = (title, message, type) => setAlertConfig({ isOpen: true, title, message, type });
 
@@ -122,6 +125,46 @@ export default function Dashboard({ session }) {
   const net1 = calculateNetMonthly(grossSalary);
   const net2 = moveType === 'couple' ? calculateNetMonthly(partnerSalary) : 0;
   const computedTotalBudget = Math.round((net1 + net2) * (budgetSlider / 100));
+
+  // AI Agent Natural Language Intent Parser
+  const handleAiParseAndSubmit = (e) => {
+    e.preventDefault();
+    if (!aiPromptText.trim()) return showAlert("Missing Context", "Please enter your search details in the box.", "error");
+
+    const text = aiPromptText.toLowerCase();
+    
+    // Extract postcode or default to E16 1US
+    const pcMatch = aiPromptText.match(/\b([A-Z]{1,2}[0-9][A-Z0-9]? [0-9][ABD-HJLNP-UW-Z]{2})\b/i) || aiPromptText.match(/\b([A-Z]{1,2}[0-9]{1,2})\b/i);
+    const extractedPostcode = pcMatch ? pcMatch[0].toUpperCase() : (postcode || "E16 1US");
+
+    // Extract salary
+    let extractedSalary = grossSalary;
+    const salMatch = text.match(/([0-9]{2,3})\s*k/);
+    if (salMatch) extractedSalary = parseInt(salMatch[1]) * 1000;
+
+    // Extract days
+    let extractedDays = officeDays;
+    const daysMatch = text.match(/([1-5])\s*days/);
+    if (daysMatch) extractedDays = parseInt(daysMatch[1]);
+
+    // Extract move type
+    let extractedMove = moveType;
+    if (text.includes("couple") || text.includes("partner") || text.includes("we ")) extractedMove = "couple";
+
+    setPostcode(extractedPostcode);
+    setGrossSalary(extractedSalary);
+    setOfficeDays(extractedDays);
+    setMoveType(extractedMove);
+
+    setSearchParams({
+      postcode: extractedPostcode,
+      move: extractedMove,
+      salary: extractedSalary,
+      partner: partnerSalary,
+      budget: budgetSlider,
+      days: extractedDays
+    });
+  };
 
   const triggerSearch = (e) => {
     e.preventDefault();
@@ -149,16 +192,6 @@ export default function Dashboard({ session }) {
 
       if (session?.user) {
         await supabase.from('profiles').update({ move_type: searchParams.get('move'), gross_salary: searchParams.get('salary'), budget_percent: searchParams.get('budget'), office_postcode: pc }).eq('id', session.user.id);
-        
-        // 🛡️ FIRST-TIME SEARCH POPUP LOGIC
-        const hasPrompted = localStorage.getItem(`survey_prompted_${session.user.id}`);
-        if (!hasPrompted) {
-          localStorage.setItem(`survey_prompted_${session.user.id}`, 'true');
-          // Wait 3 seconds so they can see their results loading before popping the modal
-          setTimeout(() => {
-            setShowSurveyModal(true);
-          }, 3000);
-        }
       }
 
       try {
@@ -181,7 +214,7 @@ export default function Dashboard({ session }) {
     };
 
     runCompute();
-  }, [searchParams, session]);
+  }, [searchParams, session, computedTotalBudget]);
 
   const saveNeighborhoodToDB = async (hubName, hubOutcode, hubRent, hubScore) => {
     if (!session) return showAlert("Not Logged In", "Please sign in to save properties.", "error");
@@ -192,6 +225,32 @@ export default function Dashboard({ session }) {
     } catch (e) { showAlert("Error", "Could not save property.", "error"); }
   };
 
+  // Generative AI Trade-Off Verdict Engine
+  const generateAIVerdict = (hub, days, userPostcode) => {
+    const fareVal = parseFloat((hub.Single_Fare_Cost || hub.single_fare || "0").toString().replace('£', ''));
+    const monthlyFare = Math.round(fareVal * 2 * days * 4.33);
+    const duration = hub.Commute_Duration || hub.duration || 0;
+    const score = hub.Suggestion_Score || hub.suggestion_score || 0;
+
+    if (monthlyFare > 180) {
+      return `⚠️ **High Commute Outlay:** Peak travel costs total **£${monthlyFare}/mo**. While rent may fit your budget, your TfL spend eats into net savings.`;
+    } else if (duration > 45) {
+      return `⚖️ **Time vs. Rent Trade-off:** Excellent rental value in this zone, but you will spend ~**${Math.round((duration * 2 * days * 4.33) / 60)} hours/mo** travelling to ${userPostcode}.`;
+    } else if (score > 85) {
+      return `✨ **Prime Recommendation:** Strong safety rating, rapid connection via ${hub.Line_Route || 'transit'}, and minimal fare impact relative to your total ceiling.`;
+    } else {
+      return `✅ **Balanced Option:** Manageable commute duration with stable monthly outgoings to ${userPostcode}.`;
+    }
+  };
+
+  // Automated Landlord Email Generator
+  const openLandlordEmailModal = (hubName, rentRange) => {
+    const userEmail = session?.user?.email || "applicant@keelengine.com";
+    const emailBody = `Subject: Inquiry Regarding 1-Bed Rental Availability in ${hubName}\n\nDear Landlord / Lettings Team,\n\nI am writing to express strong interest in available 1-bedroom properties in ${hubName} within the ${rentRange} range.\n\nMy household context:\n- Verified Employment Income & Budget: Passed KeelEngine affordability thresholds\n- Work Schedule: ${officeDays} days/week in office (${searchParams.get('postcode') || 'Central London'})\n- Target Move Date: Flexible / As soon as possible\n\nI am looking to arrange viewings for suitable listings this week. Please let me know your availability.\n\nBest regards,\n${userEmail}`;
+    
+    setEmailModal({ isOpen: true, neighborhood: hubName, emailText: emailBody });
+  };
+
   const indexOfLastItem = currentPage * itemsPerPage;
   const currentItems = (results || []).slice(indexOfLastItem - itemsPerPage, indexOfLastItem);
   const totalPages = Math.ceil((results || []).length / itemsPerPage);
@@ -200,75 +259,129 @@ export default function Dashboard({ session }) {
     <div className="max-w-7xl mx-auto px-4 py-8 min-h-[85vh] flex flex-col justify-start relative z-10">
       <AlertModal {...alertConfig} onClose={() => setAlertConfig({ ...alertConfig, isOpen: false })} />
       
-      {/* 🛡️ PERSISTENT TOP SURVEY BANNER */}
-      <div className="w-full bg-emerald-950/40 border border-emerald-500/30 rounded-2xl p-5 mb-8 flex flex-col sm:flex-row justify-between items-center gap-4 shadow-xl">
-         <div className="text-center sm:text-left">
-           <h3 className="text-emerald-400 font-black text-lg tracking-tight">Help us improve KeelEngine! 🚀</h3>
-           <p className="text-sm text-slate-300 mt-1">Take our 60-second survey and unlock a <strong className="text-white">2-Month LinkedIn Premium trial</strong>.</p>
-         </div>
-         <button onClick={() => navigate('/about')} className="bg-emerald-600 hover:bg-emerald-500 text-white font-bold py-3 px-8 rounded-xl transition text-sm shadow-md whitespace-nowrap">
-           Take the Survey
-         </button>
-      </div>
-
-      {/* 🛡️ FIRST-SEARCH POPUP MODAL */}
-      {showSurveyModal && (
+      {/* ✉️ AUTOMATED LANDLORD EMAIL MODAL */}
+      {emailModal.isOpen && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-950/80 backdrop-blur-md px-4 animate-fadeIn">
-           <div className="bg-slate-900 border border-emerald-500/50 p-8 rounded-3xl shadow-2xl max-w-md w-full text-center">
-              <span className="text-6xl block mb-4">🎁</span>
-              <h2 className="text-2xl font-black text-white mb-2 tracking-tight">Claim Your Reward!</h2>
-              <p className="text-slate-300 text-sm mb-8 leading-relaxed">
-                Since you've run your first search, we'd love to hear your thoughts. Complete a quick 60-second survey to help us optimize our dataset, and we'll give you <strong>2 Months of LinkedIn Premium</strong> for free!
-              </p>
-              <div className="flex flex-col gap-3">
-                <button onClick={() => navigate('/about')} className="w-full bg-emerald-600 hover:bg-emerald-500 text-white font-bold py-4 rounded-xl shadow-lg transition tracking-wide text-sm">
-                  Take Survey Now
-                </button>
-                <button onClick={() => setShowSurveyModal(false)} className="w-full bg-slate-800 hover:bg-slate-700 border border-slate-600 text-slate-300 font-bold py-4 rounded-xl transition text-sm">
-                  Maybe Later
-                </button>
-              </div>
-           </div>
+          <div className="bg-slate-900 border border-emerald-500/50 p-6 md:p-8 rounded-3xl shadow-2xl max-w-xl w-full">
+            <div className="flex justify-between items-center mb-4">
+              <h3 className="text-xl font-bold text-white flex items-center gap-2">
+                <span>🤖</span> AI Landlord Outreach Draft
+              </h3>
+              <button onClick={() => setEmailModal({ ...emailModal, isOpen: false })} className="text-slate-400 hover:text-white font-bold text-lg">✕</button>
+            </div>
+            <p className="text-xs text-slate-400 mb-4">Tailored to your budget, office postcode ({searchParams.get('postcode')}), and employment profile.</p>
+            <textarea 
+              readOnly 
+              value={emailModal.emailText} 
+              className="w-full h-64 bg-slate-950 border border-slate-800 rounded-xl p-4 text-xs font-mono text-slate-300 outline-none resize-none mb-6"
+            />
+            <div className="flex gap-3">
+              <button 
+                onClick={() => {
+                  navigator.clipboard.writeText(emailModal.emailText);
+                  showAlert("Copied!", "Landlord outreach email copied to clipboard.", "success");
+                  setEmailModal({ ...emailModal, isOpen: false });
+                }} 
+                className="w-full bg-emerald-600 hover:bg-emerald-500 text-white font-bold py-3 rounded-xl transition text-sm shadow-lg"
+              >
+                📋 Copy Email to Clipboard
+              </button>
+            </div>
+          </div>
         </div>
       )}
 
+      {/* TOP AI BANNER */}
+      <div className="w-full bg-emerald-950/40 border border-emerald-500/30 rounded-2xl p-5 mb-8 flex flex-col sm:flex-row justify-between items-center gap-4 shadow-xl">
+         <div className="text-center sm:text-left">
+           <h3 className="text-emerald-400 font-black text-lg tracking-tight flex items-center justify-center sm:justify-start gap-2">
+             <span>✨</span> KeelEngine Agentic AI Engine
+           </h3>
+           <p className="text-sm text-slate-300 mt-1">AI-driven natural language matching, real-cost calculations, and automated landlord outreach.</p>
+         </div>
+         <div className="bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 text-xs font-bold px-4 py-2 rounded-xl">
+           v2.5 AI Active
+         </div>
+      </div>
+
       <div className={`flex flex-col lg:flex-row gap-8 transition-all duration-700 ease-in-out ${!hasSearched ? 'justify-center items-center' : 'items-start'}`}>
         
+        {/* LEFT SEARCH CONTROL CONTAINER */}
         <div className={`w-full transition-all duration-700 ${!hasSearched ? 'max-w-xl' : 'lg:w-1/3 sticky top-8'}`}>
           <div className="glass p-8 rounded-3xl shadow-2xl border border-emerald-900/30">
-            <h2 className="text-3xl font-black text-white mb-6 text-center">Tell Us About You</h2>
-            <form onSubmit={triggerSearch} className="space-y-6">
-              <div><label className="block text-sm text-slate-300 mb-2">Who is moving?</label><select value={moveType} onChange={(e) => setMoveType(e.target.value)} className="w-full bg-slate-900 border border-slate-700 rounded-xl px-4 py-3 text-white outline-none focus:border-emerald-500"><option value="solo">Just Me</option><option value="couple">A Couple</option></select></div>
-              <div><div className="flex justify-between mb-2"><label className="text-sm text-slate-300">Your Yearly Salary</label><span className="text-emerald-400 font-bold">£{grossSalary.toLocaleString()}</span></div><input type="range" min="10000" max="200000" step="1000" value={grossSalary} onChange={(e) => setGrossSalary(Number(e.target.value))} className="w-full" /></div>
-              {moveType === 'couple' && (<div><div className="flex justify-between mb-2"><label className="text-sm text-slate-300">Partner's Salary</label><span className="text-emerald-400 font-bold">£{partnerSalary.toLocaleString()}</span></div><input type="range" min="10000" max="200000" step="1000" value={partnerSalary} onChange={(e) => setPartnerSalary(Number(e.target.value))} className="w-full" /></div>)}
-              <div><div className="flex justify-between mb-2"><label className="text-sm text-slate-300">Max Rent Allowance</label><span className="text-white font-bold">{budgetSlider}%</span></div><input type="range" min="20" max="65" step="5" value={budgetSlider} onChange={(e) => setBudgetSlider(Number(e.target.value))} className="w-full" /></div>
-              
-              <div className="bg-slate-900/50 p-4 rounded-xl text-center"><p className="text-xs text-slate-400">Total Monthly Budget</p><p className="text-2xl text-emerald-400 font-black">£{computedTotalBudget.toLocaleString()}</p></div>
-              
-              <div className="border-t border-slate-700/50 pt-6">
-                <div className="flex justify-between mb-2"><label className="text-sm text-slate-300">Days in Office per Week</label><span className="text-blue-400 font-bold">{officeDays} {officeDays === 1 ? 'Day' : 'Days'}</span></div>
-                <input type="range" min="1" max="5" step="1" value={officeDays} onChange={(e) => setOfficeDays(Number(e.target.value))} className="w-full" />
-              </div>
-              
-              <div><label className="block text-sm text-slate-300 mb-2">Where do you work? (Postcode)</label><input type="text" placeholder="e.g. EC1A 1BB" required value={postcode} onChange={(e) => setPostcode(e.target.value)} className="w-full bg-slate-900/50 border border-slate-700 rounded-xl px-4 py-4 font-mono text-white outline-none uppercase" /></div>
-              
-              <button type="submit" className="w-full bg-emerald-600 hover:bg-emerald-500 text-white font-bold py-4 rounded-xl transition shadow-lg tracking-wide">Find My Best Matches</button>
-            </form>
+            
+            {/* SEARCH MODE TOGGLE SWITCH */}
+            <div className="flex bg-slate-900 p-1.5 rounded-xl border border-slate-800 mb-6">
+              <button 
+                type="button" 
+                onClick={() => setSearchMode('ai')} 
+                className={`flex-1 py-2 rounded-lg text-xs font-bold transition flex items-center justify-center gap-1.5 ${searchMode === 'ai' ? 'bg-emerald-500 text-slate-950 shadow-md' : 'text-slate-400 hover:text-white'}`}
+              >
+                <span>✨</span> AI Prompt
+              </button>
+              <button 
+                type="button" 
+                onClick={() => setSearchMode('manual')} 
+                className={`flex-1 py-2 rounded-lg text-xs font-bold transition flex items-center justify-center gap-1.5 ${searchMode === 'manual' ? 'bg-emerald-500 text-slate-950 shadow-md' : 'text-slate-400 hover:text-white'}`}
+              >
+                <span>⚙️</span> Manual Sliders
+              </button>
+            </div>
+
+            {/* AI NATURAL LANGUAGE SEARCH FORM */}
+            {searchMode === 'ai' && (
+              <form onSubmit={handleAiParseAndSubmit} className="space-y-5">
+                <div>
+                  <label className="block text-xs font-bold text-emerald-400 uppercase tracking-wider mb-2">Describe Your Relocation Needs</label>
+                  <textarea 
+                    value={aiPromptText}
+                    onChange={(e) => setAiPromptText(e.target.value)}
+                    placeholder="e.g. I earn £55k, work in E16 1US 3 days a week, and need a 1-bed flat for a couple in a safe area..."
+                    className="w-full h-36 bg-slate-900 border border-slate-700 rounded-xl p-4 text-white text-sm outline-none resize-none focus:border-emerald-500 transition"
+                  />
+                </div>
+                <button type="submit" className="w-full bg-emerald-600 hover:bg-emerald-500 text-white font-bold py-4 rounded-xl transition shadow-lg tracking-wide text-sm flex items-center justify-center gap-2">
+                  <span>✨</span> Process AI Housing Match
+                </button>
+              </form>
+            )}
+
+            {/* MANUAL SLIDERS FORM */}
+            {searchMode === 'manual' && (
+              <form onSubmit={triggerSearch} className="space-y-6">
+                <div><label className="block text-sm text-slate-300 mb-2">Who is moving?</label><select value={moveType} onChange={(e) => setMoveType(e.target.value)} className="w-full bg-slate-900 border border-slate-700 rounded-xl px-4 py-3 text-white outline-none focus:border-emerald-500"><option value="solo">Just Me</option><option value="couple">A Couple</option></select></div>
+                <div><div className="flex justify-between mb-2"><label className="text-sm text-slate-300">Your Yearly Salary</label><span className="text-emerald-400 font-bold">£{grossSalary.toLocaleString()}</span></div><input type="range" min="10000" max="200000" step="1000" value={grossSalary} onChange={(e) => setGrossSalary(Number(e.target.value))} className="w-full" /></div>
+                {moveType === 'couple' && (<div><div className="flex justify-between mb-2"><label className="text-sm text-slate-300">Partner's Salary</label><span className="text-emerald-400 font-bold">£{partnerSalary.toLocaleString()}</span></div><input type="range" min="10000" max="200000" step="1000" value={partnerSalary} onChange={(e) => setPartnerSalary(Number(e.target.value))} className="w-full" /></div>)}
+                <div><div className="flex justify-between mb-2"><label className="text-sm text-slate-300">Max Rent Allowance</label><span className="text-white font-bold">{budgetSlider}%</span></div><input type="range" min="20" max="65" step="5" value={budgetSlider} onChange={(e) => setBudgetSlider(Number(e.target.value))} className="w-full" /></div>
+                
+                <div className="bg-slate-900/50 p-4 rounded-xl text-center"><p className="text-xs text-slate-400">Total Monthly Budget</p><p className="text-2xl text-emerald-400 font-black">£{computedTotalBudget.toLocaleString()}</p></div>
+                
+                <div className="border-t border-slate-700/50 pt-6">
+                  <div className="flex justify-between mb-2"><label className="text-sm text-slate-300">Days in Office per Week</label><span className="text-blue-400 font-bold">{officeDays} {officeDays === 1 ? 'Day' : 'Days'}</span></div>
+                  <input type="range" min="1" max="5" step="1" value={officeDays} onChange={(e) => setOfficeDays(Number(e.target.value))} className="w-full" />
+                </div>
+                
+                <div><label className="block text-sm text-slate-300 mb-2">Where do you work? (Postcode)</label><input type="text" placeholder="e.g. EC1A 1BB" required value={postcode} onChange={(e) => setPostcode(e.target.value)} className="w-full bg-slate-900/50 border border-slate-700 rounded-xl px-4 py-4 font-mono text-white outline-none uppercase" /></div>
+                
+                <button type="submit" className="w-full bg-emerald-600 hover:bg-emerald-500 text-white font-bold py-4 rounded-xl transition shadow-lg tracking-wide">Find My Best Matches</button>
+              </form>
+            )}
           </div>
         </div>
         
+        {/* RIGHT RESULTS RENDERER */}
         {hasSearched && (
           <div className="w-full lg:w-2/3 space-y-6">
             
             <div className="flex justify-between items-center bg-slate-900/50 p-4 rounded-2xl border border-slate-700/50 shadow-md">
-              <span className="text-slate-300 text-sm font-medium">Viewing results for <strong className="text-white">{searchParams.get('postcode')}</strong></span>
+              <span className="text-slate-300 text-sm font-medium">Viewing AI results for <strong className="text-white">{searchParams.get('postcode')}</strong></span>
               <button onClick={clearSearch} className="text-sm font-bold text-emerald-400 hover:text-emerald-300 bg-emerald-500/10 hover:bg-emerald-500/20 px-4 py-2 rounded-lg transition">Start New Search ↺</button>
             </div>
 
             {loading && (
               <div className="glass rounded-3xl py-32 text-center">
                 <div className="w-10 h-10 border-4 border-emerald-500 border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
-                <p className="text-slate-400">Searching London for your perfect neighborhoods...</p>
+                <p className="text-slate-400">Orchestrating agents and indexing network topologies...</p>
               </div>
             )}
             
@@ -298,6 +411,8 @@ export default function Dashboard({ session }) {
               const pub = `🍻 ${amenities[1]}`;
               const safety = amenities[2];
 
+              const aiVerdict = generateAIVerdict(hub, monthlyDays, searchParams.get('postcode'));
+
               return (
                 <div key={idx} className="glass rounded-3xl p-6 shadow-xl border border-slate-700/40 hover:border-slate-500/50 transition">
                   <div className="flex justify-between items-start mb-4">
@@ -314,7 +429,6 @@ export default function Dashboard({ session }) {
                   <NeighborhoodMap lat={lat} lng={lng} />
 
                   <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-5">
-                    
                     <div className="bg-slate-900/40 p-3 rounded-xl border border-transparent relative group cursor-help hover:border-emerald-900/50 transition">
                       <span className="block text-[10px] text-slate-400">Commute Time ⓘ</span>
                       <strong className="text-white">{duration} mins</strong>
@@ -338,15 +452,23 @@ export default function Dashboard({ session }) {
                     <div className="bg-slate-900/40 p-3 rounded-xl border border-transparent"><span className="block text-[10px] text-amber-400">Safety Rating</span><strong className="text-amber-400">{safety}/100</strong></div>
                   </div>
 
+                  {/* GENERATIVE AI VERDICT BOX */}
+                  <div className="bg-slate-950 p-4 rounded-2xl border border-slate-800 mb-5 text-xs text-slate-300 leading-relaxed">
+                    <span className="text-[10px] font-bold text-emerald-400 uppercase tracking-widest block mb-1">✨ AI Trade-Off Verdict</span>
+                    <p dangerouslySetInnerHTML={{ __html: aiVerdict.replace(/\*\*(.*?)\*\*/g, '<strong class="text-white">$1</strong>') }} />
+                  </div>
+
                   <div className="flex gap-4 text-xs font-mono text-slate-400 bg-slate-900/30 p-3 rounded-xl mb-5">
                     <span>{grocery}</span>
                     <span>|</span>
                     <span>{pub}</span>
                   </div>
 
-                  <div className="flex gap-4 items-center">
-                    <a href={`https://www.google.com/maps/dir/?api=1&origin=${lat},${lng}&destination=${postcode.toUpperCase()}&travelmode=transit`} target="_blank" rel="noreferrer" className="w-2/3 bg-blue-600 hover:bg-blue-500 rounded-xl py-3 text-center text-xs font-bold text-white transition shadow-lg">🗺️ See Commute on Google Maps</a>
-                    <button onClick={() => saveNeighborhoodToDB(name, outcode, rent, score)} className="w-1/3 bg-slate-800 hover:bg-slate-700 text-white font-bold py-3 rounded-xl text-xs transition border border-slate-600 shadow-lg">❤️ Save</button>
+                  {/* ACTION BUTTONS */}
+                  <div className="flex flex-col sm:flex-row gap-3 items-center">
+                    <a href={`https://www.google.com/maps/dir/?api=1&origin=${lat},${lng}&destination=${searchParams.get('postcode')}&travelmode=transit`} target="_blank" rel="noreferrer" className="w-full sm:w-1/2 bg-blue-600 hover:bg-blue-500 rounded-xl py-3 text-center text-xs font-bold text-white transition shadow-lg">🗺️ Maps Route</a>
+                    <button onClick={() => openLandlordEmailModal(name, rent)} className="w-full sm:w-1/4 bg-slate-800 hover:bg-slate-700 text-white font-bold py-3 rounded-xl text-xs transition border border-slate-600 shadow-lg">✉️ Draft Email</button>
+                    <button onClick={() => saveNeighborhoodToDB(name, outcode, rent, score)} className="w-full sm:w-1/4 bg-emerald-950/80 hover:bg-emerald-900/80 text-emerald-400 font-bold py-3 rounded-xl text-xs transition border border-emerald-700 shadow-lg">❤️ Save</button>
                   </div>
                 </div>
               );
