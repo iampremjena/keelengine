@@ -1,7 +1,12 @@
-
-  {
+{
+  "rewrites": [
+    {
+      "source": "/api/(.*)",
+      "destination": "/api/$1"
+    }
+  ],
   "functions": {
-    "api/compute.js": {
+    "api/*.js": {
       "maxDuration": 30
     }
   }
