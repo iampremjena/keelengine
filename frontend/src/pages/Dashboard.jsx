@@ -2,96 +2,30 @@ import React, { useState, useEffect } from 'react';
 import { useSearchParams, useNavigate } from 'react-router-dom';
 import { supabase } from '../supabaseClient';
 import AlertModal from '../components/AlertModal';
-import { MapContainer, TileLayer, Marker } from 'react-leaflet';
-import L from 'leaflet';
-import markerIcon from 'leaflet/dist/images/marker-icon.png';
-import markerShadow from 'leaflet/dist/images/marker-shadow.png';
 
-let DefaultIcon = L.icon({ iconUrl: markerIcon, shadowUrl: markerShadow, iconSize: [25, 41], iconAnchor: [12, 41] });
-L.Marker.prototype.options.icon = DefaultIcon;
-
-const HARDCODED_AMENITIES = {
-  "Abbey Wood": ["Sainsbury's Local", "The Abbey Arms", 72], "Acton": ["Waitrose", "The George & Dragon", 78],
-  "Aldgate": ["Tesco Express", "The Hoop and Grapes", 81], "Angel": ["Waitrose", "The Angelic", 86],
-  "Archway": ["Aldi", "St John's Tavern", 76], "Balham": ["Waitrose", "The Bedford", 84],
-  "Bankside": ["M&S Food", "The Anchor Bankside", 85], "Barbican": ["Waitrose", "The Jugged Hare", 88],
-  "Barking": ["Asda", "The Barking Dog", 68], "Barnes": ["M&S Food", "The Sun Inn", 92],
-  "Barnet": ["Waitrose", "The Mitre", 83], "Battersea": ["Waitrose", "The Woodman", 86],
-  "Bayswater": ["Waitrose", "The Churchill Arms", 84], "Beckenham": ["Waitrose", "The George Inn", 82],
-  "Beckton": ["Asda", "The Tollgate", 69], "Belgravia": ["Waitrose", "The Thomas Cubitt", 94],
-  "Belsize Park": ["Budgens", "The Washington", 88], "Bermondsey": ["Sainsbury's Local", "The Woolpack", 81],
-  "Bethnal Green": ["Tesco Express", "The Sun Tavern", 73], "Bexleyheath": ["Asda", "The Golden Lion", 77],
-  "Blackheath": ["M&S Food", "The Princess of Wales", 86], "Bloomsbury": ["Waitrose", "The Museum Tavern", 85],
-  "Bow": ["Tesco Express", "The Bow Bells", 71], "Brentford": ["Sainsbury's", "The Magpie and Crown", 75],
-  "Brixton": ["Tesco Superstore", "The Trinity Arms", 70], "Brockley": ["Sainsbury's Local", "The Wickham Arms", 76],
-  "Bromley": ["Waitrose", "The Partridge", 81], "Camberwell": ["Morrisons", "The Camberwell Arms", 72],
-  "Camden Town": ["Sainsbury's", "The Hawley Arms", 74], "Canary Wharf": ["Waitrose", "The Gun", 89],
-  "Canning Town": ["Co-op Food", "The Durham Arms", 68], "Catford": ["Tesco", "The Catford Bridge Tavern", 70],
-  "Chelsea": ["M&S Food", "The Builders Arms", 93], "Chingford": ["Co-op Food", "The Royal Oak", 78],
-  "Chiswick": ["Waitrose", "The George IV", 88], "Clapham": ["Waitrose", "The Falcon", 83],
-  "Clerkenwell": ["Waitrose", "The Eagle", 85], "Colindale": ["Asda", "The Chandos Arms", 74],
-  "Covent Garden": ["Tesco Express", "The Lamb & Flag", 84], "Cricklewood": ["Co-op Food", "The Crown", 71],
-  "Crouch End": ["Waitrose", "The Queens", 86], "Croydon": ["Waitrose", "The Dog & Bull", 69],
-  "Crystal Palace": ["Sainsbury's", "The Westow House", 78], "Dalston": ["Sainsbury's", "The Farr's", 72],
-  "Deptford": ["Tesco Express", "The Dog & Bell", 71], "Dulwich": ["M&S Food", "The Crown & Greyhound", 89],
-  "Ealing": ["Waitrose", "The North Star", 85], "Earls Court": ["M&S Food", "The Blackbird", 83],
-  "East Ham": ["Tesco Express", "The Denmark Arms", 67], "Edgware": ["Sainsbury's", "The Change of Horses", 75],
-  "Elephant and Castle": ["Tesco Express", "The Elephant & Castle", 70], "Eltham": ["Sainsbury's", "The Rusty Bucket", 76],
-  "Enfield": ["Waitrose", "The Crown and Horseshoes", 79], "Farringdon": ["Tesco Express", "The Betsey Trotwood", 84],
-  "Finchley": ["Waitrose", "The Catcher In The Rye", 82], "Finsbury Park": ["Lidl", "The Faltering Fullback", 73],
-  "Forest Gate": ["Co-op Food", "The Forest Tavern", 72], "Forest Hill": ["Sainsbury's", "The Capitol", 77],
-  "Fulham": ["Waitrose", "The White Horse", 87], "Golders Green": ["Sainsbury's", "The Old Bull & Bush", 84],
-  "Greenwich": ["M&S Food", "The Cutty Sark", 86], "Hackney": ["Tesco Express", "The Pembury Tavern", 74],
-  "Hammersmith": ["Waitrose", "The Blue Anchor", 83], "Hampstead": ["Waitrose", "The Holly Bush", 92],
-  "Harrow": ["Tesco Superstore", "The Castle", 79], "Highbury": ["Waitrose", "The Highbury Barn", 85],
-  "Highgate": ["M&S Food", "The Flask", 90], "Holborn": ["Waitrose", "The Princess Louise", 83],
-  "Holloway": ["Waitrose", "The Swimmer at the Grafton", 75], "Hornchurch": ["Sainsbury's", "The Fatling", 80],
-  "Hounslow": ["Asda", "The Moon Under Water", 68], "Ilford": ["Sainsbury's", "The Great Spoon of Ilford", 67],
-  "Isle of Dogs": ["Asda", "The Ferry House", 82], "Islington": ["Waitrose", "The Drapers Arms", 85],
-  "Kennington": ["Tesco Express", "The Tommyfield", 78], "Kensington": ["Whole Foods", "The Churchill Arms", 91],
-  "Kentish Town": ["Sainsbury's", "The Pineapple", 79], "Kew": ["Tesco Express", "The Greyhound", 93],
-  "Kilburn": ["Aldi", "The Black Lion", 72], "King's Cross": ["Waitrose", "The Parcel Yard", 79],
-  "Kingston upon Thames": ["Waitrose", "The Ram", 86], "Lewisham": ["Tesco Superstore", "The Fox & Firkin", 71],
-  "Leyton": ["Asda", "The Leyton Technical", 72], "Marylebone": ["Waitrose", "The Barley Mow", 89],
-  "Mayfair": ["M&S Food", "The Audley", 95], "Notting Hill": ["M&S Food", "The Elgin", 88],
-  "Orpington": ["Tesco Extra", "The Maxwell", 81], "Paddington": ["Waitrose", "The Victoria", 82],
-  "Peckham": ["Morrisons", "The Prince of Peckham", 71], "Pimlico": ["Sainsbury's", "The Marquis of Westminster", 86],
-  "Poplar": ["Co-op Food", "The Ledger Building", 70], "Putney": ["Waitrose", "The Half Moon", 88],
-  "Richmond": ["Waitrose", "The White Cross", 94], "Romford": ["Asda", "The Golden Lion", 73],
-  "Rotherhithe": ["Co-op Food", "The Mayflower", 83], "Shepherd's Bush": ["Waitrose", "The Defector's Weld", 76],
-  "Shoreditch": ["Co-op Food", "The Ten Bells", 73], "Soho": ["Tesco Express", "The French House", 82],
-  "South Kensington": ["Waitrose", "The Anglesea Arms", 91], "Southwark": ["Tesco Express", "The Founders Arms", 81],
-  "Stratford": ["Waitrose", "The Cart and Horses", 74], "Streatham": ["Aldi", "The Rabbit Hole", 75],
-  "Surbiton": ["Waitrose", "The Antelope", 87], "Sutton": ["Sainsbury's", "The Cock & Bull", 80],
-  "Tooting": ["Aldi", "The Castle", 77], "Tottenham": ["Asda", "The Antwerp Arms", 68],
-  "Twickenham": ["Waitrose", "The Barmy Arms", 89], "Vauxhall": ["Sainsbury's", "The Black Dog", 79],
-  "Walthamstow": ["Lidl", "The Bell", 76], "Wandsworth": ["Waitrose", "The Ship", 85],
-  "Waterloo": ["Sainsbury's Local", "The Fire Station", 81], "Wembley": ["Asda", "The White Horse", 71],
-  "Westminster": ["Waitrose", "The Red Lion", 86], "Whitechapel": ["Sainsbury's", "The Blind Beggar", 70],
-  "Wimbledon": ["Waitrose", "The Dog & Fox", 91], "Woolwich": ["Tesco Extra", "The Dial Arch", 73]
+// Fast local mapping for common London locations/landmarks
+const QUICK_LOCATION_MAP = {
+  "bank": "EC3V 3LA",
+  "canary wharf": "E14 5AB",
+  "london bridge": "SE1 9SG",
+  "kings cross": "N1C 4AP",
+  "liverpool street": "EC2M 7PY",
+  "victoria": "SW1E 5ND",
+  "waterloo": "SE1 8SW",
+  "stratford": "E15 1AZ",
+  "paddington": "W2 1HB",
+  "ealing": "W5 2NU"
 };
 
-function NeighborhoodMap({ lat, lng }) {
-  if (!lat || !lng) return <div className="w-full h-40 rounded-2xl bg-slate-800/50 border border-slate-700/50 flex items-center justify-center mb-5"><span className="text-slate-500 text-xs font-mono">Map Data Syncing...</span></div>;
-  return (
-    <div className="w-full h-40 rounded-2xl overflow-hidden border border-slate-700/50 mb-5 z-0 relative">
-      <MapContainer center={[lat, lng]} zoom={13} zoomControl={false} attributionControl={false} style={{ height: '100%', width: '100%' }}>
-        <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
-        <Marker position={[lat, lng]} />
-      </MapContainer>
-    </div>
-  );
-}
-
 export default function Dashboard({ session }) {
-  const navigate = useNavigate();
-  useEffect(() => { document.title = "KeelEngine AI | Smart Search"; }, []);
+  useEffect(() => { document.title = "KeelEngine | Commute & Rental Finder"; }, []);
 
   const [searchParams, setSearchParams] = useSearchParams();
   
-  const [searchMode, setSearchMode] = useState('ai'); // 'ai' or 'manual'
-  const [aiPromptText, setAiPromptText] = useState('');
+  // Default search mode is now MANUAL form
+  const [searchMode, setSearchMode] = useState('manual'); // 'manual' | 'ai'
   
+  // Manual Form States
   const [moveType, setMoveType] = useState(searchParams.get('move') || 'solo');
   const [grossSalary, setGrossSalary] = useState(Number(searchParams.get('salary')) || 50000);
   const [partnerSalary, setPartnerSalary] = useState(Number(searchParams.get('partner')) || 50000);
@@ -99,18 +33,23 @@ export default function Dashboard({ session }) {
   const [officeDays, setOfficeDays] = useState(Number(searchParams.get('days')) || 3);
   const [postcode, setPostcode] = useState(searchParams.get('postcode') || '');
   
+  // AI Prompt & Follow-Up States
+  const [aiPromptText, setAiPromptText] = useState('');
+  const [aiFollowUpNeeded, setAiFollowUpNeeded] = useState(null); // null | { missingSalary: boolean, missingPostcode: boolean }
+
   const [loading, setLoading] = useState(false);
   const [results, setResults] = useState([]);
   const [errorMsg, setErrorMsg] = useState('');
-  const [currentPage, setCurrentPage] = useState(1);
-  const itemsPerPage = 5;
 
   const [alertConfig, setAlertConfig] = useState({ isOpen: false, title: '', message: '', type: 'success' });
-  const [emailModal, setEmailModal] = useState({ isOpen: false, neighborhood: '', emailText: '' });
-  
   const showAlert = (title, message, type) => setAlertConfig({ isOpen: true, title, message, type });
 
   const hasSearched = searchParams.has('postcode');
+
+  // Backend Wake-up Ping on Page Mount (Fixes Render cold start delay)
+  useEffect(() => {
+    fetch("https://keelengine-backend.onrender.com/docs", { method: 'HEAD' }).catch(() => {});
+  }, []);
 
   const calculateNetMonthly = (gross) => {
     let tax = 0;
@@ -126,39 +65,57 @@ export default function Dashboard({ session }) {
   const net2 = moveType === 'couple' ? calculateNetMonthly(partnerSalary) : 0;
   const computedTotalBudget = Math.round((net1 + net2) * (budgetSlider / 100));
 
-  // AI Agent Natural Language Intent Parser
-  const handleAiParseAndSubmit = (e) => {
+  // AI Prompt Parser with Intelligent Follow-Up Routing
+  const handleAiSubmit = async (e) => {
     e.preventDefault();
-    if (!aiPromptText.trim()) return showAlert("Missing Context", "Please enter your search details in the box.", "error");
+    setAiFollowUpNeeded(null);
 
-    const text = aiPromptText.toLowerCase();
-    
-    // Extract postcode or default to E16 1US
-    const pcMatch = aiPromptText.match(/\b([A-Z]{1,2}[0-9][A-Z0-9]? [0-9][ABD-HJLNP-UW-Z]{2})\b/i) || aiPromptText.match(/\b([A-Z]{1,2}[0-9]{1,2})\b/i);
-    const extractedPostcode = pcMatch ? pcMatch[0].toUpperCase() : (postcode || "E16 1US");
+    const text = aiPromptText.toLowerCase().trim();
+    if (!text) return showAlert("Input Required", "Please enter a description or prompt.", "error");
 
-    // Extract salary
+    let extractedPostcode = "";
     let extractedSalary = grossSalary;
+    let extractedDays = officeDays;
+
+    // 1. Check for explicit Postcode pattern
+    const pcMatch = aiPromptText.match(/\b([A-Z]{1,2}[0-9][A-Z0-9]?\s?[0-9][ABD-HJLNP-UW-Z]{2})\b/i) || aiPromptText.match(/\b([A-Z]{1,2}[0-9]{1,2})\b/i);
+    if (pcMatch) {
+      extractedPostcode = pcMatch[0].toUpperCase();
+    } else {
+      // 2. Check local landmark map (e.g. "Bank", "Canary Wharf")
+      for (const key of Object.keys(QUICK_LOCATION_MAP)) {
+        if (text.includes(key)) {
+          extractedPostcode = QUICK_LOCATION_MAP[key];
+          break;
+        }
+      }
+    }
+
+    // 3. Extract Salary if mentioned
     const salMatch = text.match(/([0-9]{2,3})\s*k/);
     if (salMatch) extractedSalary = parseInt(salMatch[1]) * 1000;
 
-    // Extract days
-    let extractedDays = officeDays;
+    // 4. Extract Office Days
     const daysMatch = text.match(/([1-5])\s*days/);
     if (daysMatch) extractedDays = parseInt(daysMatch[1]);
 
-    // Extract move type
-    let extractedMove = moveType;
-    if (text.includes("couple") || text.includes("partner") || text.includes("we ")) extractedMove = "couple";
+    // 🚨 IF CRITICAL INFORMATION IS MISSING -> ASK FOLLOW-UPS FIRST
+    const missingPostcode = !extractedPostcode;
+    const missingSalary = !salMatch && grossSalary === 50000; // Unchanged default
 
+    if (missingPostcode || missingSalary) {
+      setAiFollowUpNeeded({ missingPostcode, missingSalary });
+      return;
+    }
+
+    // Update state & Trigger Search
     setPostcode(extractedPostcode);
     setGrossSalary(extractedSalary);
     setOfficeDays(extractedDays);
-    setMoveType(extractedMove);
 
     setSearchParams({
       postcode: extractedPostcode,
-      move: extractedMove,
+      move: moveType,
       salary: extractedSalary,
       partner: partnerSalary,
       budget: budgetSlider,
@@ -166,32 +123,28 @@ export default function Dashboard({ session }) {
     });
   };
 
-  const triggerSearch = (e) => {
+  const triggerManualSearch = (e) => {
     e.preventDefault();
-    if (!postcode.trim()) return;
+    if (!postcode.trim()) return showAlert("Postcode Required", "Please enter your target office postcode.", "error");
     setSearchParams({ postcode: postcode.toUpperCase(), move: moveType, salary: grossSalary, partner: partnerSalary, budget: budgetSlider, days: officeDays });
   };
 
-  const clearSearch = () => {
-    setSearchParams({});
-    setResults([]);
-    setCurrentPage(1);
-  };
-
+  // API Call with Browser Caching for Instant Load Times
   useEffect(() => {
     const pc = searchParams.get('postcode');
     if (!pc) return;
 
     const runCompute = async () => {
-      setLoading(true); setErrorMsg(''); setResults([]); setCurrentPage(1);
+      setLoading(true); setErrorMsg(''); setResults([]);
 
-      supabase.from('search_analytics').insert([{ 
-        gross_salary: Number(searchParams.get('salary')), 
-        office_postcode: pc.toUpperCase() 
-      }]).then();
+      const cacheKey = `keel_cache_${pc}_${searchParams.get('days')}_${computedTotalBudget}`;
+      const cachedData = localStorage.getItem(cacheKey);
 
-      if (session?.user) {
-        await supabase.from('profiles').update({ move_type: searchParams.get('move'), gross_salary: searchParams.get('salary'), budget_percent: searchParams.get('budget'), office_postcode: pc }).eq('id', session.user.id);
+      // Return cached results instantly if available!
+      if (cachedData) {
+        setResults(JSON.parse(cachedData));
+        setLoading(false);
+        return;
       }
 
       try {
@@ -200,289 +153,140 @@ export default function Dashboard({ session }) {
           body: JSON.stringify({ postcode: pc, days_per_week: Number(searchParams.get('days')), property_type: "1-Bed Private Flat", total_budget: computedTotalBudget })
         });
 
-        if (!res.ok) throw new Error("The computation server is waking up. Please wait 10 seconds and try clicking search again.");
-        
         const data = await res.json();
         
         if (data.error) setErrorMsg(data.error);
-        else if (data.is_outside_london) setErrorMsg(`Your office is in ${data.message}. We highly recommend checking properties locally instead of commuting! 🚂`);
-        else if (!data.hubs || data.hubs.length === 0) setErrorMsg(`⚠️ No neighborhoods match a budget of £${computedTotalBudget.toLocaleString()}. Try raising your Max Rent Allowance.`);
-        else setResults(data.hubs);
+        else if (data.is_outside_london) setErrorMsg(`Your office is in ${data.message}. We recommend local property checks! 🚂`);
+        else if (!data.hubs || data.hubs.length === 0) setErrorMsg(`⚠️ No neighborhoods match a budget of £${computedTotalBudget.toLocaleString()}.`);
+        else {
+          setResults(data.hubs);
+          localStorage.setItem(cacheKey, JSON.stringify(data.hubs)); // Cache response
+        }
       } catch (err) { 
-        setErrorMsg(err.message || 'Connection error. Please try again.'); 
+        setErrorMsg('Connection error. Please try again.'); 
       } finally { setLoading(false); }
     };
 
     runCompute();
-  }, [searchParams, session, computedTotalBudget]);
-
-  const saveNeighborhoodToDB = async (hubName, hubOutcode, hubRent, hubScore) => {
-    if (!session) return showAlert("Not Logged In", "Please sign in to save properties.", "error");
-    try {
-      const { error } = await supabase.from('saved_properties').insert([{ user_id: session.user.id, neighborhood: hubName, outcode: hubOutcode, rent_range: hubRent, suggestion_score: hubScore }]);
-      if (error) throw error;
-      showAlert("Saved!", `${hubName} added to your Profile.`, "success");
-    } catch (e) { showAlert("Error", "Could not save property.", "error"); }
-  };
-
-  // Generative AI Trade-Off Verdict Engine
-  const generateAIVerdict = (hub, days, userPostcode) => {
-    const fareVal = parseFloat((hub.Single_Fare_Cost || hub.single_fare || "0").toString().replace('£', ''));
-    const monthlyFare = Math.round(fareVal * 2 * days * 4.33);
-    const duration = hub.Commute_Duration || hub.duration || 0;
-    const score = hub.Suggestion_Score || hub.suggestion_score || 0;
-
-    if (monthlyFare > 180) {
-      return `⚠️ **High Commute Outlay:** Peak travel costs total **£${monthlyFare}/mo**. While rent may fit your budget, your TfL spend eats into net savings.`;
-    } else if (duration > 45) {
-      return `⚖️ **Time vs. Rent Trade-off:** Excellent rental value in this zone, but you will spend ~**${Math.round((duration * 2 * days * 4.33) / 60)} hours/mo** travelling to ${userPostcode}.`;
-    } else if (score > 85) {
-      return `✨ **Prime Recommendation:** Strong safety rating, rapid connection via ${hub.Line_Route || 'transit'}, and minimal fare impact relative to your total ceiling.`;
-    } else {
-      return `✅ **Balanced Option:** Manageable commute duration with stable monthly outgoings to ${userPostcode}.`;
-    }
-  };
-
-  // Automated Landlord Email Generator
-  const openLandlordEmailModal = (hubName, rentRange) => {
-    const userEmail = session?.user?.email || "applicant@keelengine.com";
-    const emailBody = `Subject: Inquiry Regarding 1-Bed Rental Availability in ${hubName}\n\nDear Landlord / Lettings Team,\n\nI am writing to express strong interest in available 1-bedroom properties in ${hubName} within the ${rentRange} range.\n\nMy household context:\n- Verified Employment Income & Budget: Passed KeelEngine affordability thresholds\n- Work Schedule: ${officeDays} days/week in office (${searchParams.get('postcode') || 'Central London'})\n- Target Move Date: Flexible / As soon as possible\n\nI am looking to arrange viewings for suitable listings this week. Please let me know your availability.\n\nBest regards,\n${userEmail}`;
-    
-    setEmailModal({ isOpen: true, neighborhood: hubName, emailText: emailBody });
-  };
-
-  const indexOfLastItem = currentPage * itemsPerPage;
-  const currentItems = (results || []).slice(indexOfLastItem - itemsPerPage, indexOfLastItem);
-  const totalPages = Math.ceil((results || []).length / itemsPerPage);
+  }, [searchParams, computedTotalBudget]);
 
   return (
-    <div className="max-w-7xl mx-auto px-4 py-8 min-h-[85vh] flex flex-col justify-start relative z-10">
+    <div className="max-w-7xl mx-auto px-4 py-8">
       <AlertModal {...alertConfig} onClose={() => setAlertConfig({ ...alertConfig, isOpen: false })} />
-      
-      {/* ✉️ AUTOMATED LANDLORD EMAIL MODAL */}
-      {emailModal.isOpen && (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-950/80 backdrop-blur-md px-4 animate-fadeIn">
-          <div className="bg-slate-900 border border-emerald-500/50 p-6 md:p-8 rounded-3xl shadow-2xl max-w-xl w-full">
-            <div className="flex justify-between items-center mb-4">
-              <h3 className="text-xl font-bold text-white flex items-center gap-2">
-                <span>🤖</span> AI Landlord Outreach Draft
-              </h3>
-              <button onClick={() => setEmailModal({ ...emailModal, isOpen: false })} className="text-slate-400 hover:text-white font-bold text-lg">✕</button>
-            </div>
-            <p className="text-xs text-slate-400 mb-4">Tailored to your budget, office postcode ({searchParams.get('postcode')}), and employment profile.</p>
-            <textarea 
-              readOnly 
-              value={emailModal.emailText} 
-              className="w-full h-64 bg-slate-950 border border-slate-800 rounded-xl p-4 text-xs font-mono text-slate-300 outline-none resize-none mb-6"
-            />
-            <div className="flex gap-3">
-              <button 
-                onClick={() => {
-                  navigator.clipboard.writeText(emailModal.emailText);
-                  showAlert("Copied!", "Landlord outreach email copied to clipboard.", "success");
-                  setEmailModal({ ...emailModal, isOpen: false });
-                }} 
-                className="w-full bg-emerald-600 hover:bg-emerald-500 text-white font-bold py-3 rounded-xl transition text-sm shadow-lg"
-              >
-                📋 Copy Email to Clipboard
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
 
-      {/* TOP AI BANNER */}
-      <div className="w-full bg-emerald-950/40 border border-emerald-500/30 rounded-2xl p-5 mb-8 flex flex-col sm:flex-row justify-between items-center gap-4 shadow-xl">
-         <div className="text-center sm:text-left">
-           <h3 className="text-emerald-400 font-black text-lg tracking-tight flex items-center justify-center sm:justify-start gap-2">
-             <span>✨</span> KeelEngine Agentic AI Engine
-           </h3>
-           <p className="text-sm text-slate-300 mt-1">AI-driven natural language matching, real-cost calculations, and automated landlord outreach.</p>
-         </div>
-         <div className="bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 text-xs font-bold px-4 py-2 rounded-xl">
-           v2.5 AI Active
-         </div>
-      </div>
-
-      <div className={`flex flex-col lg:flex-row gap-8 transition-all duration-700 ease-in-out ${!hasSearched ? 'justify-center items-center' : 'items-start'}`}>
+      <div className={`flex flex-col lg:flex-row gap-8 ${!hasSearched ? 'justify-center items-center' : 'items-start'}`}>
         
-        {/* LEFT SEARCH CONTROL CONTAINER */}
-        <div className={`w-full transition-all duration-700 ${!hasSearched ? 'max-w-xl' : 'lg:w-1/3 sticky top-8'}`}>
+        {/* CONTROL BOX */}
+        <div className={`w-full ${!hasSearched ? 'max-w-xl' : 'lg:w-1/3 sticky top-8'}`}>
           <div className="glass p-8 rounded-3xl shadow-2xl border border-emerald-900/30">
             
-            {/* SEARCH MODE TOGGLE SWITCH */}
+            {/* TAB SELECTOR: DEFAULT MANUAL FORM FIRST */}
             <div className="flex bg-slate-900 p-1.5 rounded-xl border border-slate-800 mb-6">
               <button 
-                type="button" 
-                onClick={() => setSearchMode('ai')} 
-                className={`flex-1 py-2 rounded-lg text-xs font-bold transition flex items-center justify-center gap-1.5 ${searchMode === 'ai' ? 'bg-emerald-500 text-slate-950 shadow-md' : 'text-slate-400 hover:text-white'}`}
+                onClick={() => setSearchMode('manual')} 
+                className={`flex-1 py-2.5 rounded-lg text-xs font-bold transition ${searchMode === 'manual' ? 'bg-emerald-500 text-slate-950 shadow-md' : 'text-slate-400 hover:text-white'}`}
               >
-                <span>✨</span> AI Prompt
+                ⚙️ Manual Form
               </button>
               <button 
-                type="button" 
-                onClick={() => setSearchMode('manual')} 
-                className={`flex-1 py-2 rounded-lg text-xs font-bold transition flex items-center justify-center gap-1.5 ${searchMode === 'manual' ? 'bg-emerald-500 text-slate-950 shadow-md' : 'text-slate-400 hover:text-white'}`}
+                onClick={() => setSearchMode('ai')} 
+                className={`flex-1 py-2.5 rounded-lg text-xs font-bold transition ${searchMode === 'ai' ? 'bg-emerald-500 text-slate-950 shadow-md' : 'text-slate-400 hover:text-white'}`}
               >
-                <span>⚙️</span> Manual Sliders
+                ✨ AI Prompt (Beta)
               </button>
             </div>
 
-            {/* AI NATURAL LANGUAGE SEARCH FORM */}
-            {searchMode === 'ai' && (
-              <form onSubmit={handleAiParseAndSubmit} className="space-y-5">
+            {/* DEFAULT MANUAL FORM */}
+            {searchMode === 'manual' && (
+              <form onSubmit={triggerManualSearch} className="space-y-6">
                 <div>
-                  <label className="block text-xs font-bold text-emerald-400 uppercase tracking-wider mb-2">Describe Your Relocation Needs</label>
+                  <label className="block text-sm text-slate-300 mb-2">Who is moving?</label>
+                  <select value={moveType} onChange={(e) => setMoveType(e.target.value)} className="w-full bg-slate-900 border border-slate-700 rounded-xl px-4 py-3 text-white outline-none">
+                    <option value="solo">Just Me</option>
+                    <option value="couple">A Couple</option>
+                  </select>
+                </div>
+
+                <div>
+                  <div className="flex justify-between mb-2"><label className="text-sm text-slate-300">Annual Salary</label><span className="text-emerald-400 font-bold">£{grossSalary.toLocaleString()}</span></div>
+                  <input type="range" min="10000" max="200000" step="1000" value={grossSalary} onChange={(e) => setGrossSalary(Number(e.target.value))} className="w-full" />
+                </div>
+
+                <div>
+                  <div className="flex justify-between mb-2"><label className="text-sm text-slate-300">Max Rent Allowance</label><span className="text-white font-bold">{budgetSlider}%</span></div>
+                  <input type="range" min="20" max="65" step="5" value={budgetSlider} onChange={(e) => setBudgetSlider(Number(e.target.value))} className="w-full" />
+                </div>
+
+                <div className="bg-slate-900/50 p-4 rounded-xl text-center">
+                  <p className="text-xs text-slate-400">Total Monthly Budget</p>
+                  <p className="text-2xl text-emerald-400 font-black">£{computedTotalBudget.toLocaleString()}</p>
+                </div>
+
+                <div>
+                  <label className="block text-sm text-slate-300 mb-2">Office Postcode</label>
+                  <input type="text" placeholder="e.g. EC1A 1BB or E16 1US" required value={postcode} onChange={(e) => setPostcode(e.target.value)} className="w-full bg-slate-900/50 border border-slate-700 rounded-xl px-4 py-4 font-mono text-white outline-none uppercase" />
+                </div>
+
+                <button type="submit" className="w-full bg-emerald-600 hover:bg-emerald-500 text-white font-bold py-4 rounded-xl transition shadow-lg text-sm">Compute Matches ➔</button>
+              </form>
+            )}
+
+            {/* OPTIONAL AI PROMPT FORM WITH FOLLOW-UP DIALOGUE */}
+            {searchMode === 'ai' && (
+              <form onSubmit={handleAiSubmit} className="space-y-4">
+                <div>
+                  <label className="block text-xs font-bold text-emerald-400 uppercase tracking-wider mb-2">AI Search Assistant</label>
                   <textarea 
                     value={aiPromptText}
                     onChange={(e) => setAiPromptText(e.target.value)}
-                    placeholder="e.g. I earn £55k, work in E16 1US 3 days a week, and need a 1-bed flat for a couple in a safe area..."
-                    className="w-full h-36 bg-slate-900 border border-slate-700 rounded-xl p-4 text-white text-sm outline-none resize-none focus:border-emerald-500 transition"
+                    placeholder="e.g. I work near Bank station 3 days a week, earn £60k, and want a flat under 40 mins commute..."
+                    className="w-full h-32 bg-slate-900 border border-slate-700 rounded-xl p-4 text-white text-sm outline-none resize-none focus:border-emerald-500 transition"
                   />
                 </div>
-                <button type="submit" className="w-full bg-emerald-600 hover:bg-emerald-500 text-white font-bold py-4 rounded-xl transition shadow-lg tracking-wide text-sm flex items-center justify-center gap-2">
-                  <span>✨</span> Process AI Housing Match
+
+                {/* AI FOLLOW-UP INTERACTION BOX */}
+                {aiFollowUpNeeded && (
+                  <div className="bg-slate-950 p-4 rounded-xl border border-amber-500/50 animate-fadeIn text-xs space-y-3">
+                    <span className="text-amber-400 font-bold block">🤔 AI Follow-up Needed:</span>
+                    {aiFollowUpNeeded.missingPostcode && (
+                      <div>
+                        <label className="text-slate-300 block mb-1">Which station or area is your office located near?</label>
+                        <input type="text" placeholder="e.g. Bank, Canary Wharf, or E16 1US" onChange={(e) => setPostcode(e.target.value)} className="w-full bg-slate-900 border border-slate-700 rounded-lg p-2 text-white font-mono uppercase" />
+                      </div>
+                    )}
+                    {aiFollowUpNeeded.missingSalary && (
+                      <div>
+                        <label className="text-slate-300 block mb-1">What is your annual salary? (£)</label>
+                        <input type="number" placeholder="50000" onChange={(e) => setGrossSalary(Number(e.target.value))} className="w-full bg-slate-900 border border-slate-700 rounded-lg p-2 text-white font-mono" />
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                <button type="submit" className="w-full bg-emerald-600 hover:bg-emerald-500 text-white font-bold py-4 rounded-xl transition shadow-lg text-sm">
+                  ✨ Parse Intent & Search
                 </button>
               </form>
             )}
 
-            {/* MANUAL SLIDERS FORM */}
-            {searchMode === 'manual' && (
-              <form onSubmit={triggerSearch} className="space-y-6">
-                <div><label className="block text-sm text-slate-300 mb-2">Who is moving?</label><select value={moveType} onChange={(e) => setMoveType(e.target.value)} className="w-full bg-slate-900 border border-slate-700 rounded-xl px-4 py-3 text-white outline-none focus:border-emerald-500"><option value="solo">Just Me</option><option value="couple">A Couple</option></select></div>
-                <div><div className="flex justify-between mb-2"><label className="text-sm text-slate-300">Your Yearly Salary</label><span className="text-emerald-400 font-bold">£{grossSalary.toLocaleString()}</span></div><input type="range" min="10000" max="200000" step="1000" value={grossSalary} onChange={(e) => setGrossSalary(Number(e.target.value))} className="w-full" /></div>
-                {moveType === 'couple' && (<div><div className="flex justify-between mb-2"><label className="text-sm text-slate-300">Partner's Salary</label><span className="text-emerald-400 font-bold">£{partnerSalary.toLocaleString()}</span></div><input type="range" min="10000" max="200000" step="1000" value={partnerSalary} onChange={(e) => setPartnerSalary(Number(e.target.value))} className="w-full" /></div>)}
-                <div><div className="flex justify-between mb-2"><label className="text-sm text-slate-300">Max Rent Allowance</label><span className="text-white font-bold">{budgetSlider}%</span></div><input type="range" min="20" max="65" step="5" value={budgetSlider} onChange={(e) => setBudgetSlider(Number(e.target.value))} className="w-full" /></div>
-                
-                <div className="bg-slate-900/50 p-4 rounded-xl text-center"><p className="text-xs text-slate-400">Total Monthly Budget</p><p className="text-2xl text-emerald-400 font-black">£{computedTotalBudget.toLocaleString()}</p></div>
-                
-                <div className="border-t border-slate-700/50 pt-6">
-                  <div className="flex justify-between mb-2"><label className="text-sm text-slate-300">Days in Office per Week</label><span className="text-blue-400 font-bold">{officeDays} {officeDays === 1 ? 'Day' : 'Days'}</span></div>
-                  <input type="range" min="1" max="5" step="1" value={officeDays} onChange={(e) => setOfficeDays(Number(e.target.value))} className="w-full" />
-                </div>
-                
-                <div><label className="block text-sm text-slate-300 mb-2">Where do you work? (Postcode)</label><input type="text" placeholder="e.g. EC1A 1BB" required value={postcode} onChange={(e) => setPostcode(e.target.value)} className="w-full bg-slate-900/50 border border-slate-700 rounded-xl px-4 py-4 font-mono text-white outline-none uppercase" /></div>
-                
-                <button type="submit" className="w-full bg-emerald-600 hover:bg-emerald-500 text-white font-bold py-4 rounded-xl transition shadow-lg tracking-wide">Find My Best Matches</button>
-              </form>
-            )}
           </div>
         </div>
-        
-        {/* RIGHT RESULTS RENDERER */}
+
+        {/* RESULTS RENDERER */}
         {hasSearched && (
           <div className="w-full lg:w-2/3 space-y-6">
+            {loading && <div className="glass rounded-3xl py-24 text-center text-slate-400">Loading live transit matrices...</div>}
+            {errorMsg && <div className="p-6 glass rounded-3xl border border-red-900/30 text-amber-400 text-center">{errorMsg}</div>}
             
-            <div className="flex justify-between items-center bg-slate-900/50 p-4 rounded-2xl border border-slate-700/50 shadow-md">
-              <span className="text-slate-300 text-sm font-medium">Viewing AI results for <strong className="text-white">{searchParams.get('postcode')}</strong></span>
-              <button onClick={clearSearch} className="text-sm font-bold text-emerald-400 hover:text-emerald-300 bg-emerald-500/10 hover:bg-emerald-500/20 px-4 py-2 rounded-lg transition">Start New Search ↺</button>
-            </div>
-
-            {loading && (
-              <div className="glass rounded-3xl py-32 text-center">
-                <div className="w-10 h-10 border-4 border-emerald-500 border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
-                <p className="text-slate-400">Orchestrating agents and indexing network topologies...</p>
+            {!loading && results.map((hub, idx) => (
+              <div key={idx} className="glass rounded-3xl p-6 shadow-xl border border-slate-700/40">
+                <h3 className="text-xl font-bold text-white">{hub.Neighborhood} ({hub.Station_Outcode})</h3>
+                <p className="text-xs text-emerald-400 font-bold my-2">Rent: {hub.Rent_Range} | Commute: {hub.Commute_Duration} mins via {hub.Line_Route}</p>
               </div>
-            )}
-            
-            {errorMsg && !loading && (
-              <div className="p-6 glass rounded-3xl border border-red-900/30 text-amber-400 text-center font-medium">{errorMsg}</div>
-            )}
-            
-            {!loading && currentItems.map((hub, idx) => {
-              const lat = hub.Latitude || hub.latitude;
-              const lng = hub.Longitude || hub.longitude;
-              const name = hub.Neighborhood || hub.neighborhood || "Unknown";
-              const outcode = hub.Station_Outcode || hub.outcode || "--";
-              const borough = hub.Borough || hub.borough || "Greater London";
-              const score = hub.Suggestion_Score || hub.suggestion_score || 0;
-              const duration = hub.Commute_Duration || hub.duration || 0;
-              const rent = hub.Rent_Range || hub.rent_range || "£--";
-              
-              const commuteRoute = hub.Line_Route || hub.line_route || "Standard Route";
-              const singleFareVal = parseFloat((hub.Single_Fare_Cost || hub.single_fare || "0").toString().replace('£', ''));
-              const singleFareStr = `£${singleFareVal.toFixed(2)}`;
-              const monthlyDays = Number(searchParams.get('days')) || 3;
-              const monthlyFare = Math.round(singleFareVal * 2 * monthlyDays * 4.33);
-              const fareLog = hub.Fare_Log || hub.fare_log || "Standard transit fare structure.";
-              
-              const amenities = HARDCODED_AMENITIES[name] || ["Local Grocer", "The Red Lion", 75];
-              const grocery = `🛒 ${amenities[0]}`;
-              const pub = `🍻 ${amenities[1]}`;
-              const safety = amenities[2];
-
-              const aiVerdict = generateAIVerdict(hub, monthlyDays, searchParams.get('postcode'));
-
-              return (
-                <div key={idx} className="glass rounded-3xl p-6 shadow-xl border border-slate-700/40 hover:border-slate-500/50 transition">
-                  <div className="flex justify-between items-start mb-4">
-                    <div>
-                      <h3 className="text-2xl font-bold text-white">{name} <span className="text-sm text-slate-400">({outcode})</span></h3>
-                      <p className="text-sm text-slate-400">{borough}</p>
-                    </div>
-                    <div className="bg-slate-900/80 border border-slate-700 rounded-xl px-4 py-2 text-center">
-                      <span className="block text-[10px] text-slate-400 uppercase font-bold">Match Score</span>
-                      <span className="text-xl font-black text-emerald-400">{score}</span>
-                    </div>
-                  </div>
-                  
-                  <NeighborhoodMap lat={lat} lng={lng} />
-
-                  <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-5">
-                    <div className="bg-slate-900/40 p-3 rounded-xl border border-transparent relative group cursor-help hover:border-emerald-900/50 transition">
-                      <span className="block text-[10px] text-slate-400">Commute Time ⓘ</span>
-                      <strong className="text-white">{duration} mins</strong>
-                      <div className="hidden group-hover:block absolute bottom-full left-0 mb-2 w-56 bg-slate-800 border border-emerald-700 p-4 rounded-xl text-xs z-50 shadow-2xl">
-                        <span className="text-slate-200 block mb-1">Suggested Route:</span>
-                        <span className="text-emerald-400 font-medium text-[11px] leading-relaxed block">{commuteRoute}</span>
-                      </div>
-                    </div>
-
-                    <div className="bg-slate-900/40 p-3 rounded-xl border border-transparent"><span className="block text-[10px] text-emerald-400">Rent Cost</span><strong className="text-emerald-400 text-sm">{rent}</strong></div>
-                    
-                    <div className="bg-slate-900/40 p-3 rounded-xl border border-transparent relative group cursor-help hover:border-blue-900/50 transition">
-                      <span className="block text-[10px] text-blue-400">Transit/mo ⓘ</span>
-                      <strong className="text-blue-400">£{monthlyFare}</strong>
-                      <div className="hidden group-hover:block absolute bottom-full left-0 mb-2 w-56 bg-slate-800 border border-blue-700 p-4 rounded-xl text-xs z-50 shadow-2xl">
-                        <span className="text-slate-200 block mb-1">One-Way Single Fare: <b className="text-white">{singleFareStr}</b></span>
-                        <span className="text-slate-400 italic text-[10px] leading-relaxed block">{fareLog}</span>
-                      </div>
-                    </div>
-
-                    <div className="bg-slate-900/40 p-3 rounded-xl border border-transparent"><span className="block text-[10px] text-amber-400">Safety Rating</span><strong className="text-amber-400">{safety}/100</strong></div>
-                  </div>
-
-                  {/* GENERATIVE AI VERDICT BOX */}
-                  <div className="bg-slate-950 p-4 rounded-2xl border border-slate-800 mb-5 text-xs text-slate-300 leading-relaxed">
-                    <span className="text-[10px] font-bold text-emerald-400 uppercase tracking-widest block mb-1">✨ AI Trade-Off Verdict</span>
-                    <p dangerouslySetInnerHTML={{ __html: aiVerdict.replace(/\*\*(.*?)\*\*/g, '<strong class="text-white">$1</strong>') }} />
-                  </div>
-
-                  <div className="flex gap-4 text-xs font-mono text-slate-400 bg-slate-900/30 p-3 rounded-xl mb-5">
-                    <span>{grocery}</span>
-                    <span>|</span>
-                    <span>{pub}</span>
-                  </div>
-
-                  {/* ACTION BUTTONS */}
-                  <div className="flex flex-col sm:flex-row gap-3 items-center">
-                    <a href={`https://www.google.com/maps/dir/?api=1&origin=${lat},${lng}&destination=${searchParams.get('postcode')}&travelmode=transit`} target="_blank" rel="noreferrer" className="w-full sm:w-1/2 bg-blue-600 hover:bg-blue-500 rounded-xl py-3 text-center text-xs font-bold text-white transition shadow-lg">🗺️ Maps Route</a>
-                    <button onClick={() => openLandlordEmailModal(name, rent)} className="w-full sm:w-1/4 bg-slate-800 hover:bg-slate-700 text-white font-bold py-3 rounded-xl text-xs transition border border-slate-600 shadow-lg">✉️ Draft Email</button>
-                    <button onClick={() => saveNeighborhoodToDB(name, outcode, rent, score)} className="w-full sm:w-1/4 bg-emerald-950/80 hover:bg-emerald-900/80 text-emerald-400 font-bold py-3 rounded-xl text-xs transition border border-emerald-700 shadow-lg">❤️ Save</button>
-                  </div>
-                </div>
-              );
-            })}
-
-            {!loading && results.length > 0 && (
-              <div className="flex justify-center items-center gap-6 mt-8 pb-10">
-                <button onClick={() => setCurrentPage(p => Math.max(1, p - 1))} disabled={currentPage === 1} className="px-5 py-3 bg-slate-800 disabled:opacity-30 rounded-xl text-white font-bold border border-slate-700 hover:border-emerald-500 transition shadow-lg">← Back</button>
-                <span className="text-slate-400 font-mono text-sm bg-slate-900/50 px-4 py-2 rounded-lg border border-slate-800">Page {currentPage} of {totalPages}</span>
-                <button onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))} disabled={currentPage === totalPages} className="px-5 py-3 bg-slate-800 disabled:opacity-30 rounded-xl text-white font-bold border border-slate-700 hover:border-emerald-500 transition shadow-lg">Next →</button>
-              </div>
-            )}
+            ))}
           </div>
         )}
+
       </div>
     </div>
   );
