@@ -1,11 +1,8 @@
-// api/compute.js (Vercel Serverless Function)
-import { OpenAI } from 'openai';
-
-const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+import OpenAI from 'openai';
 
 export default async function handler(req, res) {
-  // Enable CORS
-  res.setHeader('Access-Control-Allow-Credentials', true);
+  // CORS Headers
+  res.setHeader('Access-Control-Allow-Credentials', 'true');
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET,OPTIONS,PATCH,DELETE,POST,PUT');
   res.setHeader('Access-Control-Allow-Headers', 'X-CSRF-Token, X-Requested-With, Accept, Accept-Version, Content-Length, Content-MD5, Content-Type, Date, X-Api-Version');
@@ -13,24 +10,33 @@ export default async function handler(req, res) {
   if (req.method === 'OPTIONS') return res.status(200).end();
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
 
-  const { postcode, days_per_week, property_type, total_budget } = req.body;
+  const { postcode, days_per_week = 3, property_type = "1-Bed Private Flat", total_budget = 1800 } = req.body || {};
 
-  if (!postcode) return res.status(400).json({ error: 'Postcode is required' });
+  if (!postcode) return res.status(400).json({ error: 'Office postcode is required.' });
+
+  const apiKey = process.env.OPENAI_API_KEY;
+
+  if (!apiKey) {
+    console.error("CRITICAL: OPENAI_API_KEY environment variable is missing in Vercel!");
+    return res.status(500).json({ error: "API Key missing. Please check Vercel Environment Variables." });
+  }
 
   try {
-    // 1. AI Structural Recommendation Query
+    const openai = new OpenAI({ apiKey });
+
     const prompt = `
-      The user works near London postcode '${postcode}' and commutes ${days_per_week} days/week.
-      They want a '${property_type}' with a strict maximum total budget (rent + TfL tube/train fare) of £${total_budget}/month.
+      User works near London postcode '${postcode}' and commutes ${days_per_week} days/week.
+      Property requirement: '${property_type}'. Maximum total monthly outgoings (Rent + TfL travel): £${total_budget}.
       
-      Identify 4 distinct, real London neighborhoods/stations that fit this criteria.
-      For each neighborhood, return realistic rent ranges, TfL peak fare estimates, safety scores out of 100, council tax band D estimates, and a 2-sentence AI Verdict.
+      Suggest 4 realistic London neighborhoods/stations suitable for this commuter. 
+      Return realistic rent ranges, TfL peak fare estimates, safety scores out of 100, council tax band D estimates, and a 2-sentence AI trade-off verdict.
     `;
 
+    // 1. Fetch AI Suggestions using Structured Outputs Schema
     const completion = await openai.chat.completions.create({
       model: 'gpt-4o-mini',
       messages: [
-        { role: 'system', content: 'You are KeelEngine, an enterprise London real estate intelligence system. Return ONLY raw JSON without markdown formatting.' },
+        { role: 'system', content: 'You are KeelEngine AI. Return strictly valid JSON adhering to the schema.' },
         { role: 'user', content: prompt }
       ],
       response_format: {
@@ -71,36 +77,37 @@ export default async function handler(req, res) {
       }
     });
 
-    const parsedData = JSON.parse(completion.choices[0].message.content);
+    const parsed = JSON.parse(completion.choices[0].message.content || '{"hubs":[]}');
 
-    // 2. Fetch Live Web Listings from Rightmove / Zoopla using Tavily
+    // 2. Parallelized Live Scraping via Tavily (Fast Execution)
     const tavilyKey = process.env.TAVILY_API_KEY;
-    
-    if (tavilyKey && parsedData.hubs) {
-      for (let hub of parsedData.hubs) {
-        try {
-          const tavilyRes = await fetch('https://api.tavily.com/search', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              api_key: tavilyKey,
-              query: `site:rightmove.co.uk OR site:zoopla.co.uk property to rent in ${hub.Neighborhood} ${hub.Station_Outcode} ${property_type}`,
-              search_depth: "basic",
-              max_results: 2
-            })
-          });
-          const tavilyData = await tavilyRes.json();
-          hub.live_listings = (tavilyData.results || []).map(r => ({ title: r.title, url: r.url }));
-        } catch (e) {
-          hub.live_listings = [];
-        }
-      }
+    if (tavilyKey && parsed.hubs && parsed.hubs.length > 0) {
+      await Promise.all(
+        parsed.hubs.map(async (hub) => {
+          try {
+            const tavRes = await fetch('https://api.tavily.com/search', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                api_key: tavilyKey,
+                query: `site:rightmove.co.uk OR site:zoopla.co.uk property to rent in ${hub.Neighborhood} ${hub.Station_Outcode}`,
+                search_depth: "basic",
+                max_results: 2
+              })
+            });
+            const tavData = await tavRes.json();
+            hub.live_listings = (tavData.results || []).map(r => ({ title: r.title, url: r.url }));
+          } catch (e) {
+            hub.live_listings = [];
+          }
+        })
+      );
     }
 
-    return res.status(200).json(parsedData);
+    return res.status(200).json(parsed);
 
-  } catch (error) {
-    console.error("Vercel Function Error:", error);
-    return res.status(500).json({ error: error.message || "Failed to orchestrate AI Search." });
+  } catch (err) {
+    console.error("OpenAI Execution Error:", err);
+    return res.status(500).json({ error: `AI Search Error: ${err.message}` });
   }
 }
