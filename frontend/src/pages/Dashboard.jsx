@@ -10,7 +10,6 @@ import markerShadow from 'leaflet/dist/images/marker-shadow.png';
 let DefaultIcon = L.icon({ iconUrl: markerIcon, shadowUrl: markerShadow, iconSize: [25, 41], iconAnchor: [12, 41] });
 L.Marker.prototype.options.icon = DefaultIcon;
 
-// Vast array of London areas for instant Autocomplete
 const LONDON_AREAS = [
   "Abbey Wood", "Acton", "Aldgate", "Angel", "Archway", "Balham", "Bank", "Bankside", "Barbican", "Barking", "Barnes", "Barnet", "Battersea", "Bayswater", "Beckenham", "Beckton", "Belgravia", "Belsize Park", "Bermondsey", "Bethnal Green", "Bexleyheath", "Blackheath", "Bloomsbury", "Bow", "Brentford", "Brixton", "Brockley", "Bromley", "Camberwell", "Camden Town", "Canary Wharf", "Canning Town", "Catford", "Chelsea", "Chingford", "Chiswick", "Clapham", "Clerkenwell", "Colindale", "Covent Garden", "Cricklewood", "Crouch End", "Croydon", "Crystal Palace", "Dalston", "Deptford", "Dulwich", "Ealing", "Earls Court", "East Ham", "Edgware", "Elephant and Castle", "Eltham", "Enfield", "Farringdon", "Finchley", "Finsbury Park", "Forest Gate", "Forest Hill", "Fulham", "Golders Green", "Greenwich", "Hackney", "Hammersmith", "Hampstead", "Harrow", "Highbury", "Highgate", "Holborn", "Holloway", "Hornchurch", "Hounslow", "Ilford", "Isle of Dogs", "Islington", "Kennington", "Kensington", "Kentish Town", "Kew", "Kilburn", "King's Cross", "Kingston", "Lewisham", "Leyton", "Liverpool Street", "London Bridge", "Marylebone", "Mayfair", "Notting Hill", "Orpington", "Paddington", "Peckham", "Pimlico", "Poplar", "Putney", "Richmond", "Romford", "Rotherhithe", "Shepherd's Bush", "Shoreditch", "Soho", "South Kensington", "Southwark", "Stratford", "Streatham", "Surbiton", "Sutton", "Tooting", "Tottenham", "Twickenham", "Vauxhall", "Victoria", "Walthamstow", "Wandsworth", "Waterloo", "Wembley", "Westminster", "Whitechapel", "Wimbledon", "Woolwich"
 ];
@@ -56,7 +55,6 @@ export default function Dashboard({ session }) {
   const [propertyType, setPropertyType] = useState(searchParams.get('type') || '1-Bed Private Flat');
   const [aiPromptText, setAiPromptText] = useState('');
 
-  // Autocomplete Location States
   const [officeLocation, setOfficeLocation] = useState(searchParams.get('postcode') || searchParams.get('destination') || '');
   const [locationSuggestions, setLocationSuggestions] = useState([]);
   const [showSuggestions, setShowSuggestions] = useState(false);
@@ -77,27 +75,33 @@ export default function Dashboard({ session }) {
   ]);
   const [chatInput, setChatInput] = useState('');
   const [chatLoading, setChatLoading] = useState(false);
+  const [audioLoading, setAudioLoading] = useState(false);
   const chatScrollRef = useRef(null);
 
   const showAlert = (title, message, type) => setAlertConfig({ isOpen: true, title, message, type });
   const hasSearched = searchParams.has('postcode') || searchParams.has('destination');
 
-  // Text-to-Speech Engine
-  const playBonnieAudio = (text) => {
-    if (!('speechSynthesis' in window)) return showAlert("Audio Error", "Your browser does not support text-to-speech.", "error");
-    
-    window.speechSynthesis.cancel(); // Stop current audio
-    const utterance = new SpeechSynthesisUtterance(text);
-    const voices = window.speechSynthesis.getVoices();
-    
-    // Find British Female Voice
-    let ukFemale = voices.find(v => v.lang === 'en-GB' && (v.name.includes('Female') || v.name.includes('Google UK English Female')));
-    if (!ukFemale) ukFemale = voices.find(v => v.lang === 'en-GB'); // Fallback to any UK voice
-    
-    if (ukFemale) utterance.voice = ukFemale;
-    utterance.rate = 1.0;
-    utterance.pitch = 1.1;
-    window.speechSynthesis.speak(utterance);
+  // OPENAI HIGH QUALITY VOICE ENGINE
+  const playBonnieAudio = async (text) => {
+    if (audioLoading) return;
+    setAudioLoading(true);
+    try {
+      const response = await fetch('/api/tts', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ text })
+      });
+      if (!response.ok) throw new Error("TTS failed");
+      const blob = await response.blob();
+      const audioUrl = URL.createObjectURL(blob);
+      const audio = new Audio(audioUrl);
+      audio.play();
+    } catch (e) {
+      console.error(e);
+      showAlert("Audio Error", "Voice engine is currently sleeping.", "error");
+    } finally {
+      setAudioLoading(false);
+    }
   };
 
   const handleLocationType = (e) => {
@@ -154,7 +158,6 @@ export default function Dashboard({ session }) {
     const lowerText = text.toLowerCase();
     const salMatch = lowerText.match(/([0-9]{2,3})\s*k/);
     const extractedSalary = salMatch ? parseInt(salMatch[1]) * 1000 : grossSalary;
-
     const daysMatch = lowerText.match(/([1-5])\s*days/);
     const extractedDays = daysMatch ? parseInt(daysMatch[1]) : officeDays;
 
@@ -164,7 +167,6 @@ export default function Dashboard({ session }) {
     else if (lowerText.includes("room") || lowerText.includes("share")) extractedType = "Shared Flatshare / Room";
 
     setOfficeLocation(extractedDestination); setGrossSalary(extractedSalary); setOfficeDays(extractedDays); setPropertyType(extractedType);
-
     setSearchParams({ postcode: extractedDestination, destination: extractedDestination, move: moveType, salary: extractedSalary, partner: partnerSalary, budget: budgetSlider, days: extractedDays, type: extractedType });
   };
 
@@ -192,16 +194,15 @@ export default function Dashboard({ session }) {
         if (!res.ok) throw new Error("Server communication issue. Please try again.");
         const data = await res.json();
         if (data.error) setErrorMsg(data.error);
-        else if (!data.hubs || data.hubs.length === 0) setErrorMsg(`⚠️ No neighborhoods match a budget of £${activeTotalBudget.toLocaleString()}. Try adjusting your Max Rent Allowance.`);
+        else if (!data.hubs || data.hubs.length === 0) setErrorMsg(`⚠️ No neighborhoods match a budget of £${activeTotalBudget.toLocaleString()}.`);
         else setResults(data.hubs);
-      } catch (err) { setErrorMsg(err.message || 'Connection error. Please try again.'); } finally { setLoading(false); }
+      } catch (err) { setErrorMsg(err.message || 'Connection error.'); } finally { setLoading(false); }
     };
     runCompute();
   }, [searchParams]);
 
   const sendChatMessage = async (msgText) => {
     if (!msgText.trim() || chatLoading) return;
-
     const userMsg = { role: 'user', content: msgText.trim() };
     const updatedMessages = [...chatMessages, userMsg];
     setChatMessages(updatedMessages);
@@ -216,9 +217,7 @@ export default function Dashboard({ session }) {
       const data = await res.json();
       if (data.reply) {
         setChatMessages([...updatedMessages, { role: 'assistant', content: data.reply }]);
-      } else {
-        throw new Error();
-      }
+      } else throw new Error();
     } catch (err) {
       setChatMessages([...updatedMessages, { role: 'assistant', content: "I'm having trouble connecting right now. Please email our developer at iampremjena@gmail.com." }]);
     } finally {
@@ -230,14 +229,14 @@ export default function Dashboard({ session }) {
     if (chatScrollRef.current) chatScrollRef.current.scrollTop = chatScrollRef.current.scrollHeight;
   }, [chatMessages, isBonnieOpen]);
 
-  // Analytics Tracker & Modal Opener
+  // SUPABASE POPULARITY TRACKER
   const handleListingsClick = async (hub) => {
     setListingsModal({ isOpen: true, neighborhood: hub.Neighborhood, listings: hub.live_listings || [] });
     try {
-      // Logs the click in Supabase neighborhood_clicks table
-      await supabase.from('neighborhood_clicks').insert([{ neighborhood: hub.Neighborhood }]);
+      const { error } = await supabase.from('neighborhood_clicks').insert([{ neighborhood: hub.Neighborhood }]);
+      if (error) console.error("Analytics Log Error:", error.message);
     } catch (e) {
-      console.log("Analytics ping failed silently.");
+      console.error("Failed to ping Supabase analytics", e);
     }
   };
 
@@ -250,7 +249,7 @@ export default function Dashboard({ session }) {
     <div className="max-w-7xl mx-auto px-4 py-8 min-h-[85vh] relative">
       <AlertModal {...alertConfig} onClose={() => setAlertConfig({ ...alertConfig, isOpen: false })} />
 
-      {/* 💬 FLOATING BONNIE CHATBOT WIDGET */}
+      {/* 💬 BONNIE CHATBOT WITH TTS & FORMATTING */}
       <div className="fixed bottom-6 right-6 z-[200]">
         {!isBonnieOpen ? (
           <button onClick={() => setIsBonnieOpen(true)} className="bg-emerald-600 hover:bg-emerald-500 text-white font-bold px-5 py-4 rounded-full shadow-2xl transition flex items-center gap-2 border border-emerald-400/40">
@@ -266,19 +265,20 @@ export default function Dashboard({ session }) {
             <div ref={chatScrollRef} className="flex-1 p-4 overflow-y-auto space-y-4 text-xs">
               {chatMessages.map((msg, idx) => (
                 <div key={idx} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
-                  <div className={`max-w-[85%] p-3 rounded-2xl relative ${msg.role === 'user' ? 'bg-emerald-600 text-white' : 'bg-slate-950 text-slate-200 border border-slate-800'}`}>
-                    {msg.content}
-                    {/* TTS PLAY BUTTON FOR BONNIE */}
+                  <div className={`max-w-[85%] p-4 rounded-2xl relative ${msg.role === 'user' ? 'bg-emerald-600 text-white' : 'bg-slate-950 text-slate-200 border border-slate-800'}`}>
+                    
+                    {/* Render HTML tags returned by Bonnie correctly */}
+                    <div dangerouslySetInnerHTML={{ __html: msg.content }} className="space-y-2 [&_ul]:list-disc [&_ul]:ml-4 [&_li]:mt-1" />
+
                     {msg.role === 'assistant' && (
-                      <button onClick={() => playBonnieAudio(msg.content)} className="absolute -right-8 bottom-1 text-slate-400 hover:text-emerald-400 p-1" title="Read Aloud">
-                        🔊
+                      <button onClick={() => playBonnieAudio(msg.content)} disabled={audioLoading} className="absolute -right-8 bottom-1 text-slate-400 hover:text-emerald-400 p-1 transition" title="Listen">
+                        {audioLoading ? '⏳' : '🔊'}
                       </button>
                     )}
                   </div>
                 </div>
               ))}
               
-              {/* BONNIE QUICK PROMPTS (Only show at the beginning) */}
               {chatMessages.length === 1 && !chatLoading && (
                 <div className="flex flex-col gap-2 mt-2">
                   {BONNIE_QUICK_PROMPTS.map((prompt, i) => (
@@ -300,7 +300,7 @@ export default function Dashboard({ session }) {
         )}
       </div>
 
-      {/* SUGGESTED LISTINGS MODAL (Better Fallback URLs) */}
+      {/* SUGGESTED LISTINGS MODAL */}
       {listingsModal.isOpen && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-950/80 backdrop-blur-md px-4 animate-fadeIn">
           <div className="bg-slate-900 border border-emerald-500/50 p-6 md:p-8 rounded-3xl shadow-2xl max-w-2xl w-full">
@@ -321,7 +321,6 @@ export default function Dashboard({ session }) {
                 <div className="text-center py-6 bg-slate-950 rounded-xl border border-slate-800 space-y-3">
                   <p className="text-slate-400 text-xs">No direct live matches found via scraper. Search directly on UK portals:</p>
                   <div className="flex flex-wrap justify-center gap-3">
-                    {/* ENCODED FALLBACK URLS FOR BETTER SUCCESS RATE */}
                     <a href={`https://www.rightmove.co.uk/property-to-rent/search.html?searchLocation=${encodeURIComponent(listingsModal.neighborhood + ', London')}`} target="_blank" rel="noreferrer" className="bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs px-4 py-2 rounded-xl">Search Rightmove ➔</a>
                     <a href={`https://www.zoopla.co.uk/to-rent/property/${encodeURIComponent(listingsModal.neighborhood.replace(/\s+/g, '-').toLowerCase())}/`} target="_blank" rel="noreferrer" className="bg-blue-600 hover:bg-blue-500 text-white font-bold text-xs px-4 py-2 rounded-xl">Search Zoopla ➔</a>
                   </div>
@@ -381,7 +380,6 @@ export default function Dashboard({ session }) {
                   <input type="range" min="1" max="5" step="1" value={officeDays} onChange={(e) => setOfficeDays(Number(e.target.value))} className="w-full accent-blue-500" />
                 </div>
                 
-                {/* AUTOCOMPLETE LOCATION INPUT */}
                 <div className="relative">
                   <label className="block text-xs font-bold text-slate-300 uppercase mb-2">Office Location / Destination</label>
                   <input 
@@ -390,6 +388,7 @@ export default function Dashboard({ session }) {
                     value={officeLocation} 
                     onChange={handleLocationType} 
                     onFocus={() => {if (officeLocation.length > 0) setShowSuggestions(true)}}
+                    placeholder=""
                     className="w-full bg-slate-900 border border-slate-700 rounded-xl px-4 py-4 text-white outline-none text-sm" 
                   />
                   {showSuggestions && locationSuggestions.length > 0 && (
@@ -411,7 +410,7 @@ export default function Dashboard({ session }) {
               <form onSubmit={handleAiSubmit} className="space-y-4 text-left">
                 <div>
                   <label className="block text-xs font-bold text-emerald-400 uppercase tracking-wider mb-2">Smart Search Prompt</label>
-                  <textarea value={aiPromptText} onChange={(e) => setAiPromptText(e.target.value)} className="w-full h-40 bg-slate-900 border border-slate-700 rounded-xl p-4 text-white text-sm outline-none resize-none focus:border-emerald-500 transition" />
+                  <textarea value={aiPromptText} onChange={(e) => setAiPromptText(e.target.value)} placeholder="e.g., I work in Canary Wharf 3 days a week, earn £65k, and need a 1-bed flat..." className="w-full h-40 bg-slate-900 border border-slate-700 rounded-xl p-4 text-white text-sm outline-none resize-none focus:border-emerald-500 transition" />
                 </div>
                 <button type="submit" className="w-full bg-emerald-600 hover:bg-emerald-500 text-white font-bold py-4 rounded-xl transition shadow-xl text-sm flex items-center justify-center gap-2">
                   <span>✨</span> Process & Search
@@ -461,20 +460,40 @@ export default function Dashboard({ session }) {
 
                   <NeighborhoodMap lat={hub.Latitude} lng={hub.Longitude} neighborhood={hub.Neighborhood} targetDestination={activeDestination} />
 
-                  <div className="bg-slate-950 p-4 rounded-2xl border border-slate-800 mb-5">
-                    <span className="text-[10px] font-bold text-blue-400 uppercase tracking-widest block mb-1">⏱️ Route to {activeDestination} ({hub.Commute_Duration} Mins)</span>
-                    <p className="text-xs text-slate-200 font-medium leading-relaxed">{hub.Journey_Breakdown}</p>
-                  </div>
-
+                  {/* TOOLTIP HOVER METRICS GRID */}
                   <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-5">
-                    <div className="bg-slate-950 p-3.5 rounded-xl border border-slate-800"><span className="block text-[10px] text-slate-400 uppercase font-bold">Rent Allocation</span><span className="text-emerald-400 font-bold text-sm">{hub.Rent_Range}</span></div>
-                    <div className="bg-slate-950 p-3.5 rounded-xl border border-slate-800"><span className="block text-[10px] text-slate-400 uppercase font-bold">Single TfL Fare</span><span className="text-blue-400 font-bold text-sm">£{singleFare.toFixed(2)}</span></div>
-                    <div className="bg-slate-950 p-3.5 rounded-xl border border-slate-800"><span className="block text-[10px] text-slate-400 uppercase font-bold">Commute Cost / Mo</span><span className="text-blue-400 font-bold text-sm">£{monthlyFareTotal}</span></div>
-                    <div className="bg-slate-950 p-3.5 rounded-xl border border-slate-800"><span className="block text-[10px] text-slate-400 uppercase font-bold">Safety Index</span><span className="text-amber-400 font-bold text-sm">{hub.Safety_Score}/100</span></div>
-                  </div>
+                    
+                    <div className="bg-slate-950 p-3.5 rounded-xl border border-slate-800">
+                      <span className="block text-[10px] text-slate-400 uppercase font-bold">Rent Allocation</span>
+                      <span className="text-emerald-400 font-bold text-sm">{hub.Rent_Range}</span>
+                    </div>
 
-                  <div className="bg-slate-900/60 p-4 rounded-xl border border-slate-800 mb-5 text-[11px] text-slate-400">
-                    <span className="font-bold text-slate-300 block mb-1">💡 How TfL Fare is calculated:</span>{hub.TfL_Fare_Explanation}
+                    <div className="bg-slate-950 p-3.5 rounded-xl border border-slate-800 relative group cursor-help hover:border-emerald-500 transition">
+                      <span className="block text-[10px] text-slate-400 uppercase font-bold">Commute Time ⓘ</span>
+                      <span className="text-white font-bold text-sm">{hub.Commute_Duration} Mins</span>
+                      <div className="hidden group-hover:block absolute bottom-full left-0 mb-2 w-56 bg-slate-800 border border-emerald-700 p-4 rounded-xl text-xs z-50 shadow-2xl">
+                        <strong className="text-white block mb-1">Door-to-door Journey:</strong>
+                        <span className="text-slate-300">{hub.Journey_Breakdown}</span>
+                      </div>
+                    </div>
+
+                    <div className="bg-slate-950 p-3.5 rounded-xl border border-slate-800 relative group cursor-help hover:border-blue-500 transition">
+                      <span className="block text-[10px] text-slate-400 uppercase font-bold">Cost / Mo ⓘ</span>
+                      <span className="text-blue-400 font-bold text-sm">£{monthlyFareTotal}</span>
+                      <div className="hidden group-hover:block absolute bottom-full left-0 mb-2 w-64 bg-slate-800 border border-blue-700 p-4 rounded-xl text-xs z-50 shadow-2xl">
+                        <strong className="text-white block mb-1">Calculation Breakdown:</strong>
+                        <span className="text-slate-300">£{singleFare.toFixed(2)} (Peak Single Fare) <br/>× 2 (Return journey)<br/>× {searchParams.get('days')} (Days/week)<br/>× 4.33 (Weeks/month)<br/><br/>= £{monthlyFareTotal}/mo Total</span>
+                      </div>
+                    </div>
+
+                    <div className="bg-slate-950 p-3.5 rounded-xl border border-slate-800 relative group cursor-help hover:border-amber-500 transition">
+                      <span className="block text-[10px] text-slate-400 uppercase font-bold">Safety Index ⓘ</span>
+                      <span className="text-amber-400 font-bold text-sm">{hub.Safety_Score}/100</span>
+                      <div className="hidden group-hover:block absolute right-0 bottom-full mb-2 w-56 bg-slate-800 border border-amber-700 p-4 rounded-xl text-xs z-50 shadow-2xl">
+                        <strong className="text-white block mb-1">Data Source:</strong>
+                        <span className="text-slate-300">Based on the latest London Metropolitan Police neighborhood crime reports and population density ratios.</span>
+                      </div>
+                    </div>
                   </div>
 
                   <div className="bg-slate-950/80 p-4 rounded-xl border border-slate-800 mb-6 text-xs leading-relaxed text-slate-300">
