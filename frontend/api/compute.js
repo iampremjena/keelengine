@@ -10,84 +10,53 @@ export default async function handler(req, res) {
   if (req.method === 'OPTIONS') return res.status(200).end();
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
 
-  const { postcode, days_per_week = 3, property_type = "1-Bed Private Flat", total_budget = 1800 } = req.body || {};
-
-  if (!postcode) return res.status(400).json({ error: 'Office postcode is required.' });
-
-  const apiKey = process.env.OPENAI_API_KEY;
-
-  if (!apiKey) {
-    console.error("CRITICAL: OPENAI_API_KEY environment variable is missing in Vercel!");
-    return res.status(500).json({ error: "API Key missing. Please check Vercel Environment Variables." });
-  }
-
   try {
+    const { postcode, days_per_week = 3, property_type = "1-Bed Private Flat", total_budget = 1800 } = req.body || {};
+
+    if (!postcode) return res.status(400).json({ error: 'Office postcode is required.' });
+
+    const apiKey = process.env.OPENAI_API_KEY;
+    if (!apiKey) {
+      return res.status(500).json({ error: "OPENAI_API_KEY is not configured in Vercel settings." });
+    }
+
     const openai = new OpenAI({ apiKey });
 
     const prompt = `
-      User works near London postcode '${postcode}' and commutes ${days_per_week} days/week.
-      Property requirement: '${property_type}'. Maximum total monthly outgoings (Rent + TfL travel): £${total_budget}.
+      You are KeelEngine, an enterprise London real estate AI engine.
+      The user works near London postcode '${postcode}' and commutes ${days_per_week} days/week.
+      Property type: '${property_type}'. Maximum total monthly outgoings (Rent + TfL travel): £${total_budget}.
       
-      Suggest 4 realistic London neighborhoods/stations suitable for this commuter. 
-      Return realistic rent ranges, TfL peak fare estimates, safety scores out of 100, council tax band D estimates, and a 2-sentence AI trade-off verdict.
+      Identify 4 realistic London neighborhoods suitable for this commuter. 
+      Return STRICTLY a JSON object with a key "hubs" containing an array of 4 objects with keys:
+      "Neighborhood", "Station_Outcode", "Borough", "Rent_Range", "Commute_Duration" (number), "Line_Route", "Single_Fare_Cost" (number), "Council_Tax_Band_D_Base" (number), "Nearest_Grocery", "Nearest_Pub", "Safety_Score" (number), "Suggestion_Score" (number), "AI_Verdict".
     `;
 
-    // 1. Fetch AI Suggestions using Structured Outputs Schema
+    // Fast completion using standard json_object
     const completion = await openai.chat.completions.create({
       model: 'gpt-4o-mini',
       messages: [
-        { role: 'system', content: 'You are KeelEngine AI. Return strictly valid JSON adhering to the schema.' },
+        { role: 'system', content: 'You are KeelEngine AI. Return strictly valid JSON.' },
         { role: 'user', content: prompt }
       ],
-      response_format: {
-        type: "json_schema",
-        json_schema: {
-          name: "housing_response",
-          schema: {
-            type: "object",
-            properties: {
-              hubs: {
-                type: "array",
-                items: {
-                  type: "object",
-                  properties: {
-                    Neighborhood: { type: "string" },
-                    Station_Outcode: { type: "string" },
-                    Borough: { type: "string" },
-                    Rent_Range: { type: "string" },
-                    Commute_Duration: { type: "number" },
-                    Line_Route: { type: "string" },
-                    Single_Fare_Cost: { type: "number" },
-                    Council_Tax_Band_D_Base: { type: "number" },
-                    Nearest_Grocery: { type: "string" },
-                    Nearest_Pub: { type: "string" },
-                    Safety_Score: { type: "number" },
-                    Suggestion_Score: { type: "number" },
-                    AI_Verdict: { type: "string" }
-                  },
-                  required: ["Neighborhood", "Station_Outcode", "Borough", "Rent_Range", "Commute_Duration", "Line_Route", "Single_Fare_Cost", "Safety_Score", "Suggestion_Score", "AI_Verdict"],
-                  additionalProperties: false
-                }
-              }
-            },
-            required: ["hubs"],
-            additionalProperties: false
-          }
-        }
-      }
+      response_format: { type: "json_object" }
     });
 
     const parsed = JSON.parse(completion.choices[0].message.content || '{"hubs":[]}');
 
-    // 2. Parallelized Live Scraping via Tavily (Fast Execution)
+    // Fast Parallel Tavily Scraping with short 2s timeout
     const tavilyKey = process.env.TAVILY_API_KEY;
     if (tavilyKey && parsed.hubs && parsed.hubs.length > 0) {
-      await Promise.all(
+      await Promise.allSettled(
         parsed.hubs.map(async (hub) => {
           try {
+            const controller = new AbortController();
+            const timeoutId = setTimeout(() => controller.abort(), 2500);
+
             const tavRes = await fetch('https://api.tavily.com/search', {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
+              signal: controller.signal,
               body: JSON.stringify({
                 api_key: tavilyKey,
                 query: `site:rightmove.co.uk OR site:zoopla.co.uk property to rent in ${hub.Neighborhood} ${hub.Station_Outcode}`,
@@ -95,6 +64,7 @@ export default async function handler(req, res) {
                 max_results: 2
               })
             });
+            clearTimeout(timeoutId);
             const tavData = await tavRes.json();
             hub.live_listings = (tavData.results || []).map(r => ({ title: r.title, url: r.url }));
           } catch (e) {
@@ -107,7 +77,7 @@ export default async function handler(req, res) {
     return res.status(200).json(parsed);
 
   } catch (err) {
-    console.error("OpenAI Execution Error:", err);
-    return res.status(500).json({ error: `AI Search Error: ${err.message}` });
+    console.error("Vercel Runtime Exception:", err);
+    return res.status(500).json({ error: `Runtime Exception: ${err.message}` });
   }
 }
