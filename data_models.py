@@ -31,7 +31,7 @@ HARDCODED_AMENITIES = {
     "Brixton": ("Tesco Superstore", "The Trinity Arms", 70), "Brockley": ("Sainsbury's Local", "The Wickham Arms", 76),
     "Bromley": ("Waitrose", "The Partridge", 81), "Camberwell": ("Morrisons", "The Camberwell Arms", 72),
     "Camden Town": ("Sainsbury's", "The Hawley Arms", 74), "Canary Wharf": ("Waitrose", "The Gun", 89),
-    "Canning Town": ("Co-op Food", "The Durham Arms", 68), "Catford": ("Tesco", "The Catford Bridge Tavern", 70),
+    "Canning Town": ("Lidl", "The Durham Arms", 68), "Catford": ("Tesco", "The Catford Bridge Tavern", 70),
     "Chelsea": ("M&S Food", "The Builders Arms", 93), "Chingford": ("Co-op Food", "The Royal Oak", 78),
     "Chiswick": ("Waitrose", "The George IV", 88), "Clapham": ("Waitrose", "The Falcon", 83),
     "Clerkenwell": ("Waitrose", "The Eagle", 85), "Colindale": ("Asda", "The Chandos Arms", 74),
