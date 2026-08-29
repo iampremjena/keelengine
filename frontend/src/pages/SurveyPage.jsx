@@ -213,7 +213,7 @@ export default function SurveyPage({ session }) {
       <div className="w-full md:w-1/3">
         <div className="glass p-8 rounded-3xl shadow-2xl border border-emerald-900/30 sticky top-8">
           <h3 className="text-xl font-black text-emerald-400 mb-4 border-b border-emerald-900/50 pb-3">Prem Jena</h3>
-          <span className="text-xs font-bold text-slate-400 uppercase tracking-widest block mb-4">Lead Architect & AI Product Manager</span>
+          <span className="text-xs font-bold text-slate-400 uppercase tracking-widest block mb-4">FOUNDER</span>
           <p className="text-slate-300 text-sm leading-relaxed mb-6">
             Building KeelEngine as an agentic AI platform to replace traditional, friction-heavy property search with autonomous multi-variable matching and real-cost optimization.
           </p>
