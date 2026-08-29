@@ -72,6 +72,7 @@ export default function Dashboard({ session }) {
 
   const [listingsModal, setListingsModal] = useState({ isOpen: false, neighborhood: '', listings: [] });
   const [alertConfig, setAlertConfig] = useState({ isOpen: false, title: '', message: '', type: 'success' });
+  const [budgetFallback, setBudgetFallback] = useState({ isOpen: false, message: '', suggestedType: '', userBudget: 0 });
 
   // BONNIE CHATBOT & AUDIO CONTROLLER STATES
   const [isBonnieOpen, setIsBonnieOpen] = useState(false);
@@ -93,9 +94,7 @@ export default function Dashboard({ session }) {
   useEffect(() => {
     const updateTime = () => {
       const now = new Date();
-      // Date formatting: "Fri, 28 Aug 2026"
       const dateString = now.toLocaleDateString('en-GB', { timeZone: 'Europe/London', weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' });
-      // Time formatting with seconds: "11:44:34"
       const timeString = now.toLocaleTimeString('en-GB', { timeZone: 'Europe/London', hour: '2-digit', minute: '2-digit', second: '2-digit' });
       setLondonTime(`${dateString} • ${timeString} BST`);
     };
@@ -238,7 +237,12 @@ export default function Dashboard({ session }) {
     const activeTotalBudget = Math.round((calculateNetMonthly(urlSalary) + (searchParams.get('move') === 'couple' ? calculateNetMonthly(urlPartner) : 0)) * (urlBudget / 100));
 
     const runCompute = async () => {
-      setLoading(true); setErrorMsg(''); setResults([]); setCurrentPage(1);
+      setLoading(true); 
+      setErrorMsg(''); 
+      setResults([]); 
+      setCurrentPage(1);
+      setBudgetFallback({ isOpen: false, message: '', suggestedType: '', userBudget: 0 });
+
       try {
         const res = await fetch(`/api/compute`, {
           method: 'POST', headers: { 'Content-Type': 'application/json' },
@@ -246,13 +250,44 @@ export default function Dashboard({ session }) {
         });
         if (!res.ok) throw new Error("Server communication issue. Please try again.");
         const data = await res.json();
+
+        // Check if backend intercepted insufficient budget
+        if (data.budget_insufficient) {
+          setBudgetFallback({
+            isOpen: true,
+            message: data.message,
+            suggestedType: data.suggested_type,
+            userBudget: data.user_budget
+          });
+          setLoading(false);
+          return;
+        }
+
         if (data.error) setErrorMsg(data.error);
         else if (!data.hubs || data.hubs.length === 0) setErrorMsg(`⚠️ No neighborhoods match a budget of £${activeTotalBudget.toLocaleString()}.`);
         else setResults(data.hubs);
       } catch (err) { setErrorMsg(err.message || 'Connection error.'); } finally { setLoading(false); }
     };
+
     runCompute();
   }, [searchParams]);
+
+  const handleAcceptSuggestedType = () => {
+    const newType = budgetFallback.suggestedType;
+    setPropertyType(newType);
+    setBudgetFallback({ isOpen: false, message: '', suggestedType: '', userBudget: 0 });
+
+    setSearchParams({
+      postcode: officeLocation.trim().toUpperCase() || 'BANK',
+      destination: officeLocation.trim() || 'Bank',
+      move: moveType,
+      salary: grossSalary,
+      partner: partnerSalary,
+      budget: budgetSlider,
+      days: officeDays,
+      type: newType
+    });
+  };
 
   const sendChatMessage = async (msgText) => {
     if (!msgText.trim() || chatLoading) return;
@@ -293,10 +328,40 @@ export default function Dashboard({ session }) {
     <div className="max-w-7xl mx-auto px-4 sm:px-6 py-6 sm:py-8 min-h-[85vh] relative">
       <AlertModal {...alertConfig} onClose={() => setAlertConfig({ ...alertConfig, isOpen: false })} />
 
+      {/* BUDGET FALLBACK INTERCEPTION MODAL */}
+      {budgetFallback.isOpen && (
+        <div className="fixed inset-0 z-[150] flex items-center justify-center bg-slate-950/85 backdrop-blur-md px-4 animate-fadeIn">
+          <div className="bg-slate-900 border border-amber-500/50 p-6 sm:p-8 rounded-3xl shadow-2xl max-w-lg w-full text-center">
+            <div className="w-14 h-14 bg-amber-500/10 border border-amber-500/30 rounded-full flex items-center justify-center mx-auto mb-4 text-2xl">
+              💡
+            </div>
+            <h3 className="text-xl font-bold text-white mb-2">Adjust Property Selection?</h3>
+            <p className="text-slate-300 text-xs sm:text-sm leading-relaxed mb-6">
+              {budgetFallback.message}
+            </p>
+
+            <div className="flex flex-col sm:flex-row gap-3">
+              <button 
+                onClick={handleAcceptSuggestedType}
+                className="flex-1 bg-emerald-600 hover:bg-emerald-500 text-white font-bold py-3.5 px-4 rounded-xl text-xs transition shadow-lg"
+              >
+                View {budgetFallback.suggestedType} ➔
+              </button>
+              <button 
+                onClick={() => setBudgetFallback({ ...budgetFallback, isOpen: false })}
+                className="flex-1 bg-slate-800 hover:bg-slate-700 text-slate-300 font-bold py-3.5 px-4 rounded-xl text-xs transition border border-slate-700"
+              >
+                Adjust Salary / Budget
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* 🏙️ SLEEK TOP BAR: RESPONSIVE FLEX WITH SLEEK FONTS */}
       <div className="w-full bg-slate-900/80 border border-slate-800 rounded-2xl px-4 sm:px-6 py-3 sm:py-4 mb-6 sm:mb-8 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 shadow-xl backdrop-blur-md">
         <div className="flex items-center gap-2 sm:gap-3">
-          
+          <h1 className="text-xl sm:text-2xl font-black text-white tracking-tight">KeelEngine</h1>
           <span className="text-[9px] sm:text-[10px] font-black font-mono uppercase tracking-widest text-emerald-400 border border-emerald-500/40 bg-emerald-500/10 px-2 py-0.5 rounded-md mt-0.5 sm:mt-1">
             LONDON
           </span>
@@ -563,7 +628,7 @@ export default function Dashboard({ session }) {
                     </div>
                   </div>
 
-                  {/* MOBILE-ONLY TOOLTIPS FALLBACK (Since hover is hard on touch devices) */}
+                  {/* MOBILE-ONLY TOOLTIPS FALLBACK */}
                   <div className="md:hidden bg-slate-950/60 p-3 rounded-xl border border-slate-800 mb-4 sm:mb-5 text-[10px] text-slate-400 space-y-2">
                     <p><strong className="text-slate-300 block mb-0.5">Route:</strong> {hub.Journey_Breakdown}</p>
                     <p><strong className="text-slate-300 block mb-0.5">TfL Fare Math:</strong> £{singleFare.toFixed(2)} × 2 × {searchParams.get('days')} days × 4.33 wks = £{monthlyFareTotal}/mo.</p>
@@ -574,7 +639,7 @@ export default function Dashboard({ session }) {
                     <p>{hub.AI_Verdict}</p>
                   </div>
 
-                  {/* ACTION BUTTONS (STACK ON MOBILE, SIDE-BY-SIDE DESKTOP) */}
+                  {/* ACTION BUTTONS */}
                   <div className="flex flex-col sm:flex-row gap-2.5 sm:gap-3">
                     <button onClick={() => handleListingsClick(hub)} className="flex-1 bg-emerald-600 hover:bg-emerald-500 text-white font-bold py-3 sm:py-3.5 px-4 rounded-xl text-xs transition shadow-lg flex items-center justify-center gap-1.5">
                       <span>🏘️</span> Suggested Listings

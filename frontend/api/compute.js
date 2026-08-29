@@ -1,117 +1,99 @@
 import OpenAI from 'openai';
 
-export default async function handler(req, res) {
-  res.setHeader('Access-Control-Allow-Credentials', 'true');
-  res.setHeader('Access-Control-Allow-Origin', '*');
-  res.setHeader('Access-Control-Allow-Methods', 'GET,OPTIONS,PATCH,DELETE,POST,PUT');
-  res.setHeader('Access-Control-Allow-Headers', 'X-CSRF-Token, X-Requested-With, Accept, Accept-Version, Content-Length, Content-MD5, Content-Type, Date, X-Api-Version');
+const PROPERTY_TIERS = [
+  { type: 'Shared Flatshare / Room', minBudget: 550 },
+  { type: 'Studio Flat', minBudget: 1050 },
+  { type: '1-Bed Private Flat', minBudget: 1350 },
+  { type: '2-Bed Flat', minBudget: 1750 }
+];
 
-  if (req.method === 'OPTIONS') return res.status(200).end();
-  if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
+export default async function handler(req, res) {
+  if (req.method !== 'POST') {
+    return res.status(405).json({ error: 'Method not allowed' });
+  }
 
   try {
-    const { destination, postcode, days_per_week = 3, property_type = "1-Bed Private Flat", total_budget = 1800 } = req.body || {};
-    const targetOfficeLocation = (destination || postcode || '').trim();
+    const { destination, days_per_week = 3, property_type = '1-Bed Private Flat', total_budget = 1500 } = req.body;
+    const numericBudget = Number(total_budget);
 
-    if (!targetOfficeLocation) return res.status(400).json({ error: 'Office target location is required.' });
-
-    const apiKey = process.env.OPENAI_API_KEY;
-    if (!apiKey) return res.status(500).json({ error: "OPENAI_API_KEY is missing." });
-
-    const openai = new OpenAI({ apiKey });
-
-    const prompt = `
-      TARGET OFFICE DESTINATION: '${targetOfficeLocation}'
-      COMMUTE FREQUENCY: ${days_per_week} days/week.
-      PROPERTY TYPE: '${property_type}'.
-      MAX TOTAL MONTHLY BUDGET (Rent + TfL): £${total_budget}.
-
-      Suggest EXACTLY 10 realistic, diverse London commuter neighborhoods suitable for working at '${targetOfficeLocation}'.
-      For each neighborhood, return:
-      1. Latitude and Longitude.
-      2. Rent_Range for '${property_type}'.
-      3. Commute_Duration to '${targetOfficeLocation}'.
-      4. Journey_Breakdown directly to '${targetOfficeLocation}'.
-      5. Single_Fare_Cost (TfL Peak single fare).
-      6. TfL_Fare_Explanation.
-      7. Safety_Score (out of 100).
-      8. AI_Verdict (2 sentences).
-    `;
-
-    const completion = await openai.chat.completions.create({
-      model: 'gpt-4o-mini',
-      messages: [
-        { role: 'system', content: 'You are KeelEngine. Return strictly valid JSON with 10 hubs.' },
-        { role: 'user', content: prompt }
-      ],
-      response_format: {
-        type: "json_schema",
-        json_schema: {
-          name: "housing_response",
-          schema: {
-            type: "object",
-            properties: {
-              hubs: {
-                type: "array",
-                items: {
-                  type: "object",
-                  properties: {
-                    Neighborhood: { type: "string" }, Station_Outcode: { type: "string" }, Borough: { type: "string" },
-                    Latitude: { type: "number" }, Longitude: { type: "number" }, Rent_Range: { type: "string" },
-                    Commute_Duration: { type: "number" }, Journey_Breakdown: { type: "string" }, Line_Route: { type: "string" },
-                    Single_Fare_Cost: { type: "number" }, TfL_Fare_Explanation: { type: "string" },
-                    Safety_Score: { type: "number" }, Suggestion_Score: { type: "number" }, AI_Verdict: { type: "string" }
-                  },
-                  required: ["Neighborhood", "Station_Outcode", "Borough", "Latitude", "Longitude", "Rent_Range", "Commute_Duration", "Journey_Breakdown", "Line_Route", "Single_Fare_Cost", "TfL_Fare_Explanation", "Safety_Score", "Suggestion_Score", "AI_Verdict"],
-                  additionalProperties: false
-                }
-              }
-            },
-            required: ["hubs"],
-            additionalProperties: false
-          }
-        }
-      }
-    });
-
-    const parsed = JSON.parse(completion.choices[0].message.content || '{"hubs":[]}');
-
-    // Stricter Tavily Search for actual property listing URLs
-    const tavilyKey = process.env.TAVILY_API_KEY;
-    if (tavilyKey && parsed.hubs && parsed.hubs.length > 0) {
-      await Promise.allSettled(
-        parsed.hubs.map(async (hub) => {
-          try {
-            const controller = new AbortController();
-            const timeoutId = setTimeout(() => controller.abort(), 3500);
-
-            const tavRes = await fetch('https://api.tavily.com/search', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              signal: controller.signal,
-              body: JSON.stringify({
-                api_key: tavilyKey,
-                query: `${property_type} to rent in ${hub.Neighborhood} London site:rightmove.co.uk/properties OR site:zoopla.co.uk/to-rent/details`,
-                search_depth: "basic",
-                max_results: 3
-              })
-            });
-            clearTimeout(timeoutId);
-            const tavData = await tavRes.json();
-            
-            // Filter to only include actual listing links, not generic search pages
-            hub.live_listings = (tavData.results || [])
-              .filter(r => r.url.includes('/properties/') || r.url.includes('/details/') || r.url.includes('openrent'))
-              .map(r => ({ title: r.title, url: r.url }));
-          } catch (e) {
-            hub.live_listings = [];
-          }
-        })
-      );
+    // 1. Check absolute London budget floor (< £550/mo)
+    const absoluteMin = PROPERTY_TIERS[0].minBudget;
+    if (numericBudget < absoluteMin) {
+      return res.status(200).json({
+        error: `There are no suitable accommodation options in London for a budget of £${numericBudget.toLocaleString()}/mo. The absolute minimum for shared accommodation starts around £${absoluteMin}/mo.`
+      });
     }
 
-    return res.status(200).json(parsed);
-  } catch (err) {
-    return res.status(500).json({ error: `Search Error: ${err.message}` });
+    // 2. Check if user's budget is insufficient for their requested property type
+    const currentTier = PROPERTY_TIERS.find(t => t.type === property_type) || PROPERTY_TIERS[2];
+    
+    if (numericBudget < currentTier.minBudget) {
+      // Find the best matching lower tier that fits their budget
+      const suitableTier = [...PROPERTY_TIERS]
+        .reverse()
+        .find(t => numericBudget >= t.minBudget);
+
+      if (suitableTier && suitableTier.type !== property_type) {
+        return res.status(200).json({
+          budget_insufficient: true,
+          requested_type: property_type,
+          suggested_type: suitableTier.type,
+          user_budget: numericBudget,
+          message: `Your budget of £${numericBudget.toLocaleString()}/mo is below the typical baseline for a ${property_type} in London (starts around £${currentTier.minBudget}/mo). Would you like to view ${suitableTier.type} options instead?`
+        });
+      }
+    }
+
+    // 3. Perform AI Computation with Strict Budget Constraints
+    const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+
+    const prompt = `
+    You are Clyde, KeelEngine's London spatial AI research agent.
+    Generate exactly 10 realistic London neighborhood hubs for a tenant commuting to: '${destination}'.
+    
+    STRICT FINANCIAL CONSTRAINTS:
+    - User's Maximum Combined Budget (Rent + Peak TfL Commute): £${numericBudget}/month.
+    - Property Type Requested: '${property_type}'.
+    - Office Days: ${days_per_week} days/week.
+
+    CRITICAL RULE FOR RENT RANGE:
+    - The LOWER BOUND of the 'Rent_Range' MUST be equal to or lower than £${numericBudget}.
+    - Example: If budget is £800, return 'Rent_Range' like '£650 - £850/mo', NOT '£1,200 - £1,500/mo'.
+
+    Return ONLY a JSON object with a "hubs" key containing an array of 10 objects with this exact schema:
+    {
+      "hubs": [
+        {
+          "Neighborhood": "String",
+          "Station_Outcode": "String",
+          "Borough": "String",
+          "Latitude": Number,
+          "Longitude": Number,
+          "Commute_Duration": Number,
+          "Single_Fare_Cost": Number,
+          "Journey_Breakdown": "String (e.g. Northern Line direct 22 mins)",
+          "Rent_Range": "String (e.g. £700 - £900/mo)",
+          "Safety_Score": Number (1-100),
+          "Suggestion_Score": Number (1-100),
+          "AI_Verdict": "String (2 short sentences explaining why this area fits their budget)"
+        }
+      ]
+    }
+    `;
+
+    const response = await openai.chat.completions.create({
+      model: 'gpt-4o-mini',
+      messages: [{ role: 'system', content: prompt }],
+      response_format: { type: "json_object" }
+    });
+
+    const parsed = JSON.parse(response.choices[0].message.content);
+    const hubs = parsed.hubs || parsed.neighborhoods || parsed.results || (Array.isArray(parsed) ? parsed : []);
+
+    return res.status(200).json({ hubs });
+
+  } catch (error) {
+    console.error("Compute Error:", error);
+    return res.status(500).json({ error: "Clyde encountered an error searching for neighborhoods. Please try again." });
   }
 }
