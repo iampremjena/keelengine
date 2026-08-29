@@ -1,10 +1,11 @@
 import OpenAI from 'openai';
 
+// Updated to reflect accurate 2026 London Rental Market baselines
 const PROPERTY_TIERS = [
-  { type: 'Shared Flatshare / Room', minBudget: 550 },
-  { type: 'Studio Flat', minBudget: 1050 },
-  { type: '1-Bed Private Flat', minBudget: 1350 },
-  { type: '2-Bed Flat', minBudget: 1750 }
+  { type: 'Shared Flatshare / Room', minBudget: 750 },
+  { type: 'Studio Flat', minBudget: 1200 },
+  { type: '1-Bed Private Flat', minBudget: 1450 },
+  { type: '2-Bed Flat', minBudget: 1800 }
 ];
 
 export default async function handler(req, res) {
@@ -16,11 +17,11 @@ export default async function handler(req, res) {
     const { destination, days_per_week = 3, property_type = '1-Bed Private Flat', total_budget = 1500 } = req.body;
     const numericBudget = Number(total_budget);
 
-    // 1. Check absolute London budget floor (< £550/mo)
+    // 1. Check absolute London budget floor (< £750/mo)
     const absoluteMin = PROPERTY_TIERS[0].minBudget;
     if (numericBudget < absoluteMin) {
       return res.status(200).json({
-        error: `There are no suitable accommodation options in London for a budget of £${numericBudget.toLocaleString()}/mo. The absolute minimum for shared accommodation starts around £${absoluteMin}/mo.`
+        error: `There are no suitable accommodation options in London for a budget of £${numericBudget.toLocaleString()}/mo. The current absolute minimum for shared accommodation starts around £${absoluteMin}/mo.`
       });
     }
 
@@ -39,7 +40,7 @@ export default async function handler(req, res) {
           requested_type: property_type,
           suggested_type: suitableTier.type,
           user_budget: numericBudget,
-          message: `Your budget of £${numericBudget.toLocaleString()}/mo is below the typical baseline for a ${property_type} in London (starts around £${currentTier.minBudget}/mo). Would you like to view ${suitableTier.type} options instead?`
+          message: `Your budget of £${numericBudget.toLocaleString()}/mo is below the current London baseline for a ${property_type} (which starts around £${currentTier.minBudget}/mo). Would you like to view ${suitableTier.type} options instead?`
         });
       }
     }
@@ -51,14 +52,15 @@ export default async function handler(req, res) {
     You are Clyde, KeelEngine's London spatial AI research agent.
     Generate exactly 10 realistic London neighborhood hubs for a tenant commuting to: '${destination}'.
     
-    STRICT FINANCIAL CONSTRAINTS:
+    STRICT FINANCIAL CONSTRAINTS & 2026 MARKET REALITIES:
     - User's Maximum Combined Budget (Rent + Peak TfL Commute): £${numericBudget}/month.
     - Property Type Requested: '${property_type}'.
     - Office Days: ${days_per_week} days/week.
 
     CRITICAL RULE FOR RENT RANGE:
     - The LOWER BOUND of the 'Rent_Range' MUST be equal to or lower than £${numericBudget}.
-    - Example: If budget is £800, return 'Rent_Range' like '£650 - £850/mo', NOT '£1,200 - £1,500/mo'.
+    - Ensure rent estimates reflect actual 2026 London averages (e.g., Shared Rooms £750-£1200; Studios £1200-£1500; 1-Beds £1450-£2200; 2-Beds £1800-£3000).
+    - Example: If budget is £1500 for a 1-Bed, return 'Rent_Range' like '£1,350 - £1,500/mo', NOT '£1,600 - £1,900/mo'.
 
     Return ONLY a JSON object with a "hubs" key containing an array of 10 objects with this exact schema:
     {
@@ -72,7 +74,7 @@ export default async function handler(req, res) {
           "Commute_Duration": Number,
           "Single_Fare_Cost": Number,
           "Journey_Breakdown": "String (e.g. Northern Line direct 22 mins)",
-          "Rent_Range": "String (e.g. £700 - £900/mo)",
+          "Rent_Range": "String (e.g. £1,400 - £1,600/mo)",
           "Safety_Score": Number (1-100),
           "Suggestion_Score": Number (1-100),
           "AI_Verdict": "String (2 short sentences explaining why this area fits their budget)"
