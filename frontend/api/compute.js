@@ -1,22 +1,12 @@
 import OpenAI from 'openai';
 
-// 2026 London Market Baseline Tiers
+// Dynamic baselines to act as a fallback guard
 const PROPERTY_TIERS = [
   { type: 'Shared Flatshare / Room', minBudget: 750 },
   { type: 'Studio Flat', minBudget: 1200 },
   { type: '1-Bed Private Flat', minBudget: 1450 },
   { type: '2-Bed Flat', minBudget: 1800 }
 ];
-
-// Zone fare mapping for accurate TfL Peak Math
-const TFL_ZONE_FARES = {
-  'Zone 1': 3.10,
-  'Zone 2': 3.60,
-  'Zone 3': 3.90,
-  'Zone 4': 4.40,
-  'Zone 5': 5.20,
-  'Zone 6': 5.80
-};
 
 export default async function handler(req, res) {
   if (req.method !== 'POST') {
@@ -27,7 +17,7 @@ export default async function handler(req, res) {
     const { destination, days_per_week = 3, property_type = '1-Bed Private Flat', total_budget = 1500 } = req.body;
     const numericBudget = Number(total_budget);
 
-    // 1. Budget Floor Guard (< £750/mo)
+    // 1. Budget Floor Guard
     const absoluteMin = PROPERTY_TIERS[0].minBudget;
     if (numericBudget < absoluteMin) {
       return res.status(200).json({
@@ -52,25 +42,27 @@ export default async function handler(req, res) {
       }
     }
 
-    // 3. Clyde's Enhanced Spatial Reasoning Engine
+    // 3. Clyde's Enhanced Spatial & Market Reasoning Engine
     const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
     const prompt = `
-    You are Clyde, KeelEngine's advanced London spatial AI research agent.
-    Generate exactly 10 realistic London neighborhood hubs for a tenant commuting to: '${destination}'.
+    You are Clyde, KeelEngine's advanced Enterprise London spatial AI analyst.
+    Generate a market briefing and exactly 10 realistic London neighborhood hubs for a tenant commuting to: '${destination}'.
     
     STRICT FINANCIAL & SPATIAL ENGINE RULES:
     - User's Maximum Combined Budget (Rent + Peak TfL Commute): £${numericBudget}/month.
     - Property Type Requested: '${property_type}'.
     - Office Days: ${days_per_week} days/week.
     
-    DYNAMIC ACCURACY INSTRUCTIONS:
-    - Compute single fare using realistic TfL Zone pricing (Zone 1: £3.10, Zone 2: £3.60, Zone 3: £3.90, Zone 4: £4.40, Zone 5: £5.20, Zone 6: £5.80).
+    DYNAMIC ACCURACY INSTRUCTIONS (Year: 2026):
+    - Compute single fare using realistic TfL Zone pricing dynamically (e.g. Zone 1-2 vs Zone 1-5).
     - Ensure rent range lower bound is ALWAYS <= £${numericBudget}.
-    - Safety_Score (1-100) must reflect local Metropolitan Police crime statistics accurately (higher score = safer).
+    - Safety_Score (1-100) must reflect local Metropolitan Police crime statistics accurately.
+    - Suggestion_Score (1-100) should weigh how perfectly this fits their budget and commute.
 
-    Return ONLY a JSON object with a "hubs" key containing an array of 10 objects with this exact schema:
+    Return ONLY a JSON object with this exact schema:
     {
+      "market_briefing": "String (A 3-sentence executive AI summary analyzing the current rental market realities for commuting to ${destination} on a £${numericBudget} budget. Be analytical, professional, and brutally honest about what they can expect.)",
       "hubs": [
         {
           "Neighborhood": "String",
@@ -84,7 +76,7 @@ export default async function handler(req, res) {
           "Rent_Range": "String (e.g. £1,400 - £1,600/mo)",
           "Safety_Score": Number (1-100),
           "Suggestion_Score": Number (1-100),
-          "AI_Verdict": "String (2 short sentences explaining why this area fits their budget)"
+          "AI_Verdict": "String (2 short sentences explaining why this area fits their specific budget and commute)"
         }
       ]
     }
@@ -97,12 +89,15 @@ export default async function handler(req, res) {
     });
 
     const parsed = JSON.parse(response.choices[0].message.content);
+    
+    // Ensure safety parsing
     const hubs = parsed.hubs || parsed.neighborhoods || parsed.results || (Array.isArray(parsed) ? parsed : []);
+    const marketBriefing = parsed.market_briefing || "Market data processed successfully for your destination.";
 
-    return res.status(200).json({ hubs });
+    return res.status(200).json({ hubs, market_briefing: marketBriefing });
 
   } catch (error) {
     console.error("Compute Error:", error);
-    return res.status(500).json({ error: "Clyde encountered an error searching for neighborhoods. Please try again." });
+    return res.status(500).json({ error: "Clyde encountered an error analyzing the market topology. Please try again." });
   }
 }

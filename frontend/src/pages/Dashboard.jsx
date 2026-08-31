@@ -15,9 +15,9 @@ const LONDON_AREAS = [
 ];
 
 const BONNIE_QUICK_PROMPTS = [
-  "How do I use KeelEngine step-by-step?",
   "How does Clyde calculate TfL transit fares?",
-  "What is a safe rent allowance percentage?"
+  "What is a safe rent allowance percentage?",
+  "Does KeelEngine filter by pet-friendly properties?"
 ];
 
 function NeighborhoodMap({ lat, lng, neighborhood, targetDestination }) {
@@ -64,8 +64,10 @@ export default function Dashboard({ session }) {
   const [locationSuggestions, setLocationSuggestions] = useState([]);
   const [showSuggestions, setShowSuggestions] = useState(false);
 
+  // RESULTS STATES
   const [loading, setLoading] = useState(false);
   const [results, setResults] = useState([]);
+  const [marketBriefing, setMarketBriefing] = useState('');
   const [errorMsg, setErrorMsg] = useState('');
   const [currentPage, setCurrentPage] = useState(1);
   const itemsPerPage = 5;
@@ -240,6 +242,7 @@ export default function Dashboard({ session }) {
       setLoading(true); 
       setErrorMsg(''); 
       setResults([]); 
+      setMarketBriefing('');
       setCurrentPage(1);
       setBudgetFallback({ isOpen: false, message: '', suggestedType: '', userBudget: 0 });
 
@@ -251,7 +254,6 @@ export default function Dashboard({ session }) {
         if (!res.ok) throw new Error("Server communication issue. Please try again.");
         const data = await res.json();
 
-        // Check if backend intercepted insufficient budget
         if (data.budget_insufficient) {
           setBudgetFallback({
             isOpen: true,
@@ -265,7 +267,10 @@ export default function Dashboard({ session }) {
 
         if (data.error) setErrorMsg(data.error);
         else if (!data.hubs || data.hubs.length === 0) setErrorMsg(`⚠️ No neighborhoods match a budget of £${activeTotalBudget.toLocaleString()}.`);
-        else setResults(data.hubs);
+        else {
+          setResults(data.hubs);
+          setMarketBriefing(data.market_briefing || '');
+        }
       } catch (err) { setErrorMsg(err.message || 'Connection error.'); } finally { setLoading(false); }
     };
 
@@ -368,7 +373,6 @@ export default function Dashboard({ session }) {
             </span>
           </div>
 
-          {/* SLEEK WEATHER & TIME */}
           <div className="flex items-center gap-3 sm:gap-4 text-[10px] sm:text-xs font-medium text-slate-300 tracking-wide font-sans">
             <span className="flex items-center gap-1.5 opacity-90 text-emerald-300">
               {londonTime || 'Syncing clock...'}
@@ -557,16 +561,29 @@ export default function Dashboard({ session }) {
           {/* RIGHT RESULTS DISPLAY */}
           {hasSearched && (
             <div className="w-full lg:w-2/3 space-y-5 sm:space-y-6">
+              
+              {/* TOP HEADER */}
               <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center bg-slate-900/60 p-3 sm:p-4 rounded-2xl border border-slate-700/50 shadow-md gap-3 sm:gap-0">
                 <span className="text-slate-300 text-xs sm:text-sm text-center sm:text-left">Destination Target: <strong className="text-white font-mono break-all">{activeDestination}</strong></span>
                 <span className="text-[10px] sm:text-xs bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 font-bold px-3 py-1.5 rounded-lg text-center">Ceiling: £{computedTotalBudget}/mo</span>
               </div>
 
+              {/* NEW ENTERPRISE FEATURE: AI MARKET BRIEFING */}
+              {!loading && marketBriefing && (
+                <div className="bg-slate-900 border-l-4 border-emerald-500 p-4 sm:p-6 rounded-r-2xl shadow-xl animate-fadeIn">
+                  <div className="flex items-center gap-2 mb-2">
+                    <span className="text-emerald-400 text-lg">🧠</span>
+                    <h3 className="text-xs sm:text-sm font-bold text-white uppercase tracking-wider">Clyde's Market Briefing</h3>
+                  </div>
+                  <p className="text-slate-300 text-xs sm:text-sm leading-relaxed">{marketBriefing}</p>
+                </div>
+              )}
+
               {loading && (
                 <div className="glass rounded-3xl py-20 sm:py-28 text-center border border-emerald-500/30 px-4">
                   <div className="w-10 h-10 sm:w-12 sm:h-12 border-4 border-emerald-500 border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
                   <p className="text-emerald-400 font-bold text-xs sm:text-sm">Clyde is researching London transit topologies to {activeDestination}...</p>
-                  <p className="text-[10px] sm:text-xs text-slate-400 mt-1">Gathering 10 neighborhood suggestions and live property listings...</p>
+                  <p className="text-[10px] sm:text-xs text-slate-400 mt-1">Generating Market Briefing and gathering live properties...</p>
                 </div>
               )}
 
@@ -666,7 +683,6 @@ export default function Dashboard({ session }) {
         </div>
       </div>
 
-      {/* PROFESSIONAL AI DISCLAIMER FOOTER */}
       <footer className="w-full mt-12 mb-2 pt-6 border-t border-slate-800/60 text-center">
         <p className="text-[9px] sm:text-[10px] text-slate-500 leading-relaxed max-w-4xl mx-auto px-4">
           <strong>Disclaimer:</strong> KeelEngine is powered by artificial intelligence. While we strive to calculate TfL transit costs and aggregate London property data accurately, AI tools can occasionally provide inaccurate estimates or outdated market figures. Always conduct your own independent research, verify live rental prices on trusted portals, and inspect properties physically before making an offer or signing a tenancy agreement.
