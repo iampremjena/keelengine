@@ -1,6 +1,6 @@
 import OpenAI from 'openai';
 
-// Dynamic baselines to act as a fallback guard
+// 2026 London Market Baseline Tiers
 const PROPERTY_TIERS = [
   { type: 'Shared Flatshare / Room', minBudget: 750 },
   { type: 'Studio Flat', minBudget: 1200 },
@@ -42,27 +42,27 @@ export default async function handler(req, res) {
       }
     }
 
-    // 3. Clyde's Enhanced Spatial & Market Reasoning Engine
+    // 3. Clyde's Enhanced Relocation & Spatial Engine
     const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
     const prompt = `
-    You are Clyde, KeelEngine's advanced Enterprise London spatial AI analyst.
+    You are Clyde, KeelEngine's advanced Enterprise London relocation AI agent.
     Generate a market briefing and exactly 10 realistic London neighborhood hubs for a tenant commuting to: '${destination}'.
     
-    STRICT FINANCIAL & SPATIAL ENGINE RULES:
-    - User's Maximum Combined Budget (Rent + Peak TfL Commute): £${numericBudget}/month.
+    STRICT FINANCIAL & SPATIAL ENGINE RULES (Year: 2026):
+    - Maximum Combined Budget (Rent + Peak TfL Commute): £${numericBudget}/month.
     - Property Type Requested: '${property_type}'.
     - Office Days: ${days_per_week} days/week.
     
-    DYNAMIC ACCURACY INSTRUCTIONS (Year: 2026):
-    - Compute single fare using realistic TfL Zone pricing dynamically (e.g. Zone 1-2 vs Zone 1-5).
-    - Ensure rent range lower bound is ALWAYS <= £${numericBudget}.
-    - Safety_Score (1-100) must reflect local Metropolitan Police crime statistics accurately.
-    - Suggestion_Score (1-100) should weigh how perfectly this fits their budget and commute.
+    DYNAMIC ACCURACY INSTRUCTIONS:
+    - Single Fare Cost: Compute using realistic TfL Zone pricing dynamically.
+    - Rent Bounds: Rent_Lower_Bound MUST be <= £${numericBudget}.
+    - Council Tax: Provide a realistic monthly average for the specific Borough (e.g., Wandsworth is cheap ~£70/mo, Kingston is expensive ~£160/mo).
+    - Lifestyle: Be highly specific about supermarkets (Aldi vs Waitrose), local parks, and late-night transit (Night Tube vs Night Bus).
 
     Return ONLY a JSON object with this exact schema:
     {
-      "market_briefing": "String (A 3-sentence executive AI summary analyzing the current rental market realities for commuting to ${destination} on a £${numericBudget} budget. Be analytical, professional, and brutally honest about what they can expect.)",
+      "market_briefing": "String (A 3-sentence executive AI summary analyzing the current rental market, lifestyle vibe, and commute reality for ${destination} on a £${numericBudget} budget. Be brutally honest.)",
       "hubs": [
         {
           "Neighborhood": "String",
@@ -74,9 +74,14 @@ export default async function handler(req, res) {
           "Single_Fare_Cost": Number,
           "Journey_Breakdown": "String (e.g. Northern Line direct 22 mins)",
           "Rent_Range": "String (e.g. £1,400 - £1,600/mo)",
+          "Rent_Lower_Bound": Number (e.g. 1400 - crucial for upfront cash UI math),
+          "Council_Tax_Estimate": Number (Estimated monthly cost in £),
           "Safety_Score": Number (1-100),
           "Suggestion_Score": Number (1-100),
-          "AI_Verdict": "String (2 short sentences explaining why this area fits their specific budget and commute)"
+          "Groceries_Vibe": "String (e.g. Waitrose & M&S, plus a large Sainsbury's)",
+          "Social_Vibe": "String (e.g. High pub density, great independent coffee shops, 5 mins to common)",
+          "Night_Transit": "String (e.g. Night Tube available on weekends / Reliance on Night Bus)",
+          "AI_Verdict": "String (2 short sentences explaining why this area fits their budget, commute, and lifestyle)"
         }
       ]
     }
@@ -90,7 +95,6 @@ export default async function handler(req, res) {
 
     const parsed = JSON.parse(response.choices[0].message.content);
     
-    // Ensure safety parsing
     const hubs = parsed.hubs || parsed.neighborhoods || parsed.results || (Array.isArray(parsed) ? parsed : []);
     const marketBriefing = parsed.market_briefing || "Market data processed successfully for your destination.";
 
