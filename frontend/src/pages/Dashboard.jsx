@@ -362,12 +362,13 @@ export default function Dashboard({ session }) {
         {/* 🏙️ SLEEK TOP BAR: RESPONSIVE FLEX WITH SLEEK FONTS */}
         <div className="w-full bg-slate-900/80 border border-slate-800 rounded-2xl px-4 sm:px-6 py-3 sm:py-4 mb-6 sm:mb-8 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 shadow-xl backdrop-blur-md">
           <div className="flex items-center gap-2 sm:gap-3">
+            <h1 className="text-xl sm:text-2xl font-black text-white tracking-tight">KeelEngine</h1>
             <span className="text-[9px] sm:text-[10px] font-black font-mono uppercase tracking-widest text-emerald-400 border border-emerald-500/40 bg-emerald-500/10 px-2 py-0.5 rounded-md mt-0.5 sm:mt-1">
               LONDON
             </span>
           </div>
 
-          {/* SLEEK WEATHER & TIME (NO MORE CLUNKY BACKGROUNDS) */}
+          {/* SLEEK WEATHER & TIME */}
           <div className="flex items-center gap-3 sm:gap-4 text-[10px] sm:text-xs font-medium text-slate-300 tracking-wide font-sans">
             <span className="flex items-center gap-1.5 opacity-90 text-emerald-300">
               {londonTime || 'Syncing clock...'}
@@ -377,7 +378,7 @@ export default function Dashboard({ session }) {
           </div>
         </div>
 
-        {/* 💬 BONNIE CHATBOT WIDGET (MOBILE OPTIMIZED HEIGHT/WIDTH) */}
+        {/* 💬 BONNIE CHATBOT WIDGET */}
         <div className="fixed bottom-4 right-4 sm:bottom-6 sm:right-6 z-[200]">
           {!isBonnieOpen ? (
             <button onClick={() => setIsBonnieOpen(true)} className="bg-emerald-600 hover:bg-emerald-500 text-white font-bold px-4 py-3 sm:px-5 sm:py-4 rounded-full shadow-2xl transition flex items-center gap-2 border border-emerald-400/40 text-sm">
@@ -433,7 +434,7 @@ export default function Dashboard({ session }) {
           )}
         </div>
 
-        {/* SUGGESTED LISTINGS MODAL (MOBILE RESPONSIVE WIDTH) */}
+        {/* SUGGESTED LISTINGS MODAL */}
         {listingsModal.isOpen && (
           <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-950/80 backdrop-blur-md px-4 animate-fadeIn">
             <div className="bg-slate-900 border border-emerald-500/50 p-5 sm:p-6 md:p-8 rounded-3xl shadow-2xl max-w-2xl w-full">
@@ -466,7 +467,7 @@ export default function Dashboard({ session }) {
           </div>
         )}
 
-        {/* MAIN CONTENT LAYOUT: FLEX-COL FOR MOBILE, FLEX-ROW FOR DESKTOP */}
+        {/* MAIN CONTENT LAYOUT */}
         <div className={`flex flex-col lg:flex-row gap-6 sm:gap-8 ${!hasSearched ? 'justify-center items-center' : 'items-start'}`}>
           
           {/* LEFT SEARCH CONTROL FORM */}
@@ -553,7 +554,7 @@ export default function Dashboard({ session }) {
             </div>
           </div>
 
-          {/* RIGHT RESULTS DISPLAY (MOBILE WRAP OPTIMIZED) */}
+          {/* RIGHT RESULTS DISPLAY */}
           {hasSearched && (
             <div className="w-full lg:w-2/3 space-y-5 sm:space-y-6">
               <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center bg-slate-900/60 p-3 sm:p-4 rounded-2xl border border-slate-700/50 shadow-md gap-3 sm:gap-0">
@@ -593,7 +594,6 @@ export default function Dashboard({ session }) {
 
                     <NeighborhoodMap lat={hub.Latitude} lng={hub.Longitude} neighborhood={hub.Neighborhood} targetDestination={activeDestination} />
 
-                    {/* GRID: 2 COLUMNS ON MOBILE, 4 COLUMNS ON DESKTOP */}
                     <div className="grid grid-cols-2 md:grid-cols-4 gap-2 sm:gap-3 mb-4 sm:mb-5">
                       <div className="bg-slate-950 p-3 sm:p-3.5 rounded-xl border border-slate-800">
                         <span className="block text-[9px] sm:text-[10px] text-slate-400 uppercase font-bold">Rent Allocation</span>
@@ -628,7 +628,6 @@ export default function Dashboard({ session }) {
                       </div>
                     </div>
 
-                    {/* MOBILE-ONLY TOOLTIPS FALLBACK */}
                     <div className="md:hidden bg-slate-950/60 p-3 rounded-xl border border-slate-800 mb-4 sm:mb-5 text-[10px] text-slate-400 space-y-2">
                       <p><strong className="text-slate-300 block mb-0.5">Route:</strong> {hub.Journey_Breakdown}</p>
                       <p><strong className="text-slate-300 block mb-0.5">TfL Fare Math:</strong> £{singleFare.toFixed(2)} × 2 × {searchParams.get('days')} days × 4.33 wks = £{monthlyFareTotal}/mo.</p>
@@ -639,7 +638,6 @@ export default function Dashboard({ session }) {
                       <p>{hub.AI_Verdict}</p>
                     </div>
 
-                    {/* ACTION BUTTONS */}
                     <div className="flex flex-col sm:flex-row gap-2.5 sm:gap-3">
                       <button onClick={() => handleListingsClick(hub)} className="flex-1 bg-emerald-600 hover:bg-emerald-500 text-white font-bold py-3 sm:py-3.5 px-4 rounded-xl text-xs transition shadow-lg flex items-center justify-center gap-1.5">
                         <span>🏘️</span> Suggested Listings
@@ -652,7 +650,6 @@ export default function Dashboard({ session }) {
                 );
               })}
 
-              {/* PAGINATION */}
               {!loading && results.length > 0 && (
                 <div className="flex justify-between items-center bg-slate-900/80 p-3 sm:p-4 rounded-2xl border border-slate-800 shadow-xl">
                   <button onClick={() => setCurrentPage(prev => Math.max(prev - 1, 1))} disabled={currentPage === 1} className="px-4 sm:px-5 py-2 sm:py-2.5 bg-slate-800 hover:bg-slate-700 disabled:opacity-30 text-white font-bold text-[10px] sm:text-xs rounded-xl transition border border-slate-700">

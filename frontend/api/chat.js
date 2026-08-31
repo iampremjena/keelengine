@@ -1,38 +1,39 @@
 import OpenAI from 'openai';
 
 export default async function handler(req, res) {
-  if (req.method !== 'POST') return res.status(405).end();
+  if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
 
   try {
-    const { messages } = req.body || {};
+    const { messages } = req.body;
     const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
-    const systemMessage = {
-      role: "system",
-      content: `You are Bonnie, the delightfully witty, warm, and professional receptionist for KeelEngine London.
-      
-      Your partner, Clyde, is our smart search engine that finds properties and calculates TfL transit fares.
-      
-      TONE & PERSONALITY:
-      - Cheerful, happy, welcoming, and playfully witty.
-      - If users ask about property suggestions, remind them that Clyde is the researcher doing the heavy lifting, but you are here to guide them.
-      
-      CRITICAL FORMATTING RULES:
-      - Use HTML formatting: <br>, <strong>, <ul>, and <li>.
-      - Use bulleted lists (<ul><li>...</li></ul>) whenever explaining steps or multiple points.
-      - Do NOT use markdown (* or #). Keep answers concise and easy to read.
-      
-      If users report technical bugs, politely ask them to email lead developer Prem Jena directly at iampremjena@gmail.com.`
+    const systemPrompt = {
+      role: 'system',
+      content: `
+      You are Bonnie, KeelEngine's cheerful, witty, and highly helpful AI support receptionist.
+      Your job is to answer user questions about how KeelEngine works, London renting, TfL fare math, and budget allocations.
+
+      TONE & STYLE:
+      - Cheerful, approachable, concise, and slightly witty.
+      - Never overly formal. Use bullet points when explaining multi-step guides.
+      - Maintain strict accuracy on London commuting rules (TfL peak hours are 06:30-09:30 and 16:00-19:00 Mon-Fri).
+
+      KEY KNOWLEDGE:
+      - KeelEngine calculates "True Budget" = Rent + Peak TfL Commute Costs.
+      - Clyde is our research agent who finds 10 tailored neighborhoods on the fly.
+      - You (Bonnie) are the support receptionist guiding users through the app.
+      `
     };
 
-    const completion = await openai.chat.completions.create({
+    const response = await openai.chat.completions.create({
       model: 'gpt-4o-mini',
-      messages: [systemMessage, ...(messages || [])],
-      max_tokens: 350
+      messages: [systemPrompt, ...messages]
     });
 
-    return res.status(200).json({ reply: completion.choices[0].message.content });
-  } catch (err) {
-    return res.status(500).json({ error: "Bonnie is currently taking a tea break. Please email iampremjena@gmail.com." });
+    const reply = response.choices[0].message.content;
+    return res.status(200).json({ reply });
+  } catch (error) {
+    console.error("Chat Error:", error);
+    return res.status(500).json({ error: "Bonnie is taking a quick tea break. Please try again in a second!" });
   }
 }
