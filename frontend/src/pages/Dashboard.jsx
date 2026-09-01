@@ -45,17 +45,13 @@ export default function Dashboard({ session }) {
   useEffect(() => { document.title = "KeelEngine London | Relocation & Lifestyle Finder"; }, []);
 
   const [searchParams, setSearchParams] = useSearchParams();
-  
-  // UX STATE: Flight-booking style views
   const hasSearched = searchParams.has('postcode') || searchParams.has('destination');
   const [showSearchForm, setShowSearchForm] = useState(!hasSearched);
   const [searchMode, setSearchMode] = useState('manual');
   
-  // LIVE LONDON TIME
   const [londonTime, setLondonTime] = useState('');
   const [londonTemp, setLondonTemp] = useState('18°C ⛅');
 
-  // FORM STATES
   const [moveType, setMoveType] = useState(searchParams.get('move') || 'solo');
   const [grossSalary, setGrossSalary] = useState(Number(searchParams.get('salary')) || 50000);
   const [partnerSalary, setPartnerSalary] = useState(Number(searchParams.get('partner')) || 0);
@@ -67,7 +63,6 @@ export default function Dashboard({ session }) {
   const [locationSuggestions, setLocationSuggestions] = useState([]);
   const [showSuggestions, setShowSuggestions] = useState(false);
 
-  // RESULTS STATES
   const [loading, setLoading] = useState(false);
   const [results, setResults] = useState([]);
   const [marketBriefing, setMarketBriefing] = useState('');
@@ -79,7 +74,6 @@ export default function Dashboard({ session }) {
   const [alertConfig, setAlertConfig] = useState({ isOpen: false, title: '', message: '', type: 'success' });
   const [budgetFallback, setBudgetFallback] = useState({ isOpen: false, message: '', suggestedType: '', userBudget: 0 });
 
-  // BONNIE CHATBOT
   const [isBonnieOpen, setIsBonnieOpen] = useState(false);
   const [chatMessages, setChatMessages] = useState([
     { role: 'assistant', content: "Hi! I'm Bonnie 👋 Need help with visas, Monzo accounts, or TfL costs? I'm your relocation expert. How can I help?" }
@@ -90,7 +84,6 @@ export default function Dashboard({ session }) {
 
   const showAlert = (title, message, type) => setAlertConfig({ isOpen: true, title, message, type });
 
-  // CLOCK & WEATHER WIDGET
   useEffect(() => {
     const updateTime = () => {
       const now = new Date();
@@ -154,7 +147,7 @@ export default function Dashboard({ session }) {
       try {
         const res = await fetch(`/api/compute`, {
           method: 'POST', headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ destination: targetDest, days_per_week: Number(searchParams.get('days')), property_type: searchParams.get('type'), total_budget: activeTotalBudget })
+          body: JSON.stringify({ destination: targetDest, days_per_week: Number(searchParams.get('days')) || 3, property_type: searchParams.get('type'), total_budget: activeTotalBudget })
         });
         const data = await res.json();
 
@@ -183,6 +176,10 @@ export default function Dashboard({ session }) {
   };
 
   useEffect(() => { if (chatScrollRef.current) chatScrollRef.current.scrollTop = chatScrollRef.current.scrollHeight; }, [chatMessages, isBonnieOpen]);
+
+  const handleListingsClick = async (hub) => {
+    setListingsModal({ isOpen: true, neighborhood: hub.Neighborhood, listings: hub.live_listings || [] });
+  };
 
   const activeDestination = searchParams.get('destination') || officeLocation;
   const currentItems = results.slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage);
@@ -219,7 +216,7 @@ export default function Dashboard({ session }) {
               {chatMessages.map((msg, idx) => (
                 <div key={idx} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
                   <div className={`max-w-[85%] p-3.5 rounded-2xl ${msg.role === 'user' ? 'bg-emerald-600 text-white' : 'bg-slate-950 text-slate-200 border border-slate-800'}`}>
-                    <div dangerouslySetInnerHTML={{ __html: msg.content }} className="space-y-1.5" />
+                    <div dangerouslySetInnerHTML={{ __html: msg.content }} className="space-y-1.5 [&_ul]:list-disc [&_ul]:ml-4 [&_li]:mb-1 [&_strong]:text-emerald-400" />
                   </div>
                 </div>
               ))}
@@ -238,7 +235,7 @@ export default function Dashboard({ session }) {
         )}
       </div>
 
-      {/* VIEW 1: SEARCH FORM (Centered, Full Width on Mobile) */}
+      {/* SEARCH FORM */}
       {showSearchForm && (
         <div className="flex-1 flex justify-center items-center animate-fadeIn pb-12">
           <div className="w-full max-w-2xl glass p-6 sm:p-10 rounded-3xl shadow-2xl border border-emerald-900/30">
@@ -304,18 +301,18 @@ export default function Dashboard({ session }) {
         </div>
       )}
 
-      {/* VIEW 2: LOADING FULLSCREEN */}
+      {/* LOADING FULLSCREEN */}
       {loading && !showSearchForm && (
         <div className="flex-1 flex items-center justify-center animate-fadeIn">
           <div className="glass rounded-3xl py-20 px-10 text-center border border-emerald-500/30 max-w-lg w-full">
             <div className="w-14 h-14 border-4 border-emerald-500 border-t-transparent rounded-full animate-spin mx-auto mb-6"></div>
             <h2 className="text-xl font-bold text-white mb-2">Clyde is working...</h2>
-            <p className="text-emerald-400 text-sm">Curating the best London neighborhoods and live market data for you.</p>
+            <p className="text-emerald-400 text-sm">Curating the best London neighborhoods and parsing live market data.</p>
           </div>
         </div>
       )}
 
-      {/* VIEW 3: RESULTS (Flight Portal Layout) */}
+      {/* RESULTS VIEW */}
       {!showSearchForm && !loading && (
         <div className="flex-1 animate-fadeIn w-full max-w-5xl mx-auto space-y-6">
           <div className="flex justify-between items-center bg-slate-900 border border-slate-700 p-4 rounded-2xl shadow-md">
@@ -340,76 +337,87 @@ export default function Dashboard({ session }) {
             </div>
           )}
 
-          {currentItems.map((hub, idx) => (
-            <div key={idx} className="glass rounded-3xl p-5 sm:p-6 md:p-8 shadow-2xl border border-slate-700/40 hover:border-emerald-500/40 transition">
-              <div className="flex justify-between items-start mb-4">
-                <div>
-                  <h3 className="text-xl sm:text-2xl font-black text-white">{hub.Neighborhood} <span className="text-xs sm:text-sm font-normal text-slate-400">({hub.Station_Outcode})</span></h3>
-                </div>
-                <div className="bg-slate-950 border border-emerald-500/30 rounded-xl px-4 py-2 text-center ml-2">
-                  <span className="block text-[9px] text-slate-400 uppercase font-bold">Match Score</span>
-                  <span className="text-xl font-black text-emerald-400">{hub.Suggestion_Score}</span>
-                </div>
-              </div>
+          {currentItems.map((hub, idx) => {
+            // BULLETPROOF MATH PARSING
+            const queryDays = searchParams.get('days');
+            const daysNum = queryDays ? Number(queryDays) : 3;
+            const singleFareStr = String(hub.Single_Fare_Cost).replace(/[^0-9.]/g, '');
+            const singleFare = parseFloat(singleFareStr) || 0;
+            const monthlyFareTotal = Math.round(singleFare * 2 * daysNum * 4.33);
+            
+            const lowerRent = Number(hub.Rent_Lower_Bound) || 1500;
+            const councilTax = Number(hub.Council_Tax_Estimate) || 120;
+            const energyBills = Number(hub.Energy_Bills_Estimate) || 150;
+            
+            // TMOC Calculation
+            const trueMonthlyCost = lowerRent + monthlyFareTotal + councilTax + energyBills;
+            const fiveWeekDeposit = Math.round((lowerRent * 12) / 52 * 5);
+            const upfrontCash = lowerRent + fiveWeekDeposit;
 
-              <NeighborhoodMap lat={hub.Latitude} lng={hub.Longitude} neighborhood={hub.Neighborhood} targetDestination={activeDestination} />
-
-              {/* METRICS GRID */}
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-5">
-                <div className="bg-slate-950 p-3.5 rounded-xl border border-slate-800">
-                  <span className="block text-[10px] text-slate-400 uppercase font-bold">Rent Allocation</span>
-                  <span className="text-emerald-400 font-bold text-sm mt-0.5 block">{hub.Rent_Range}</span>
-                </div>
-                <div className="bg-slate-950 p-3.5 rounded-xl border border-slate-800">
-                  <span className="block text-[10px] text-slate-400 uppercase font-bold">Commute</span>
-                  <span className="text-white font-bold text-sm mt-0.5 block">{hub.Commute_Duration} Mins</span>
-                </div>
-                <div className="bg-slate-950 p-3.5 rounded-xl border border-slate-800">
-                  <span className="block text-[10px] text-slate-400 uppercase font-bold">TfL Cost / Mo</span>
-                  <span className="text-blue-400 font-bold text-sm mt-0.5 block">£{Math.round(parseFloat(hub.Single_Fare_Cost) * 2 * Number(searchParams.get('days')) * 4.33)}</span>
-                </div>
-                <div className="bg-slate-950 p-3.5 rounded-xl border border-slate-800">
-                  <span className="block text-[10px] text-slate-400 uppercase font-bold">Safety Score</span>
-                  <span className="text-amber-400 font-bold text-sm mt-0.5 block">{hub.Safety_Score}/100</span>
-                </div>
-              </div>
-
-              {/* DETAILS */}
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-5">
-                <div className="bg-slate-900/60 p-4 rounded-xl border border-slate-800/80">
-                  <h4 className="text-[10px] font-bold text-amber-500 uppercase tracking-widest mb-3">💷 Move-In Financials</h4>
-                  <div className="space-y-2 text-xs">
-                    <div className="flex justify-between text-slate-400"><span>Est. 1st Month Rent:</span> <span className="text-white">£{hub.Rent_Lower_Bound}</span></div>
-                    <div className="flex justify-between text-slate-400"><span>Est. Council Tax:</span> <span className="text-white">~£{hub.Council_Tax_Estimate || 100}/mo</span></div>
+            return (
+              <div key={idx} className="glass rounded-3xl p-5 sm:p-6 md:p-8 shadow-2xl border border-slate-700/40 hover:border-emerald-500/40 transition">
+                
+                <div className="flex justify-between items-start mb-4">
+                  <div>
+                    <h3 className="text-xl sm:text-2xl font-black text-white">{hub.Neighborhood} <span className="text-xs sm:text-sm font-normal text-slate-400">({hub.Station_Outcode})</span></h3>
+                  </div>
+                  <div className="bg-emerald-500/10 border border-emerald-500/30 rounded-xl px-4 py-2 text-center ml-2">
+                    <span className="block text-[9px] text-emerald-400 uppercase font-bold">Total Monthly Cost</span>
+                    <span className="text-xl font-black text-emerald-400">£{trueMonthlyCost.toLocaleString()}</span>
                   </div>
                 </div>
-                <div className="bg-slate-900/60 p-4 rounded-xl border border-slate-800/80">
-                  <h4 className="text-[10px] font-bold text-blue-400 uppercase tracking-widest mb-3">🍹 Lifestyle Profile</h4>
-                  <ul className="space-y-2 text-[11px] text-slate-300">
-                    <li>🛒 {hub.Groceries_Vibe}</li>
-                    <li>🌳 {hub.Social_Vibe}</li>
-                  </ul>
+
+                <NeighborhoodMap lat={hub.Latitude} lng={hub.Longitude} neighborhood={hub.Neighborhood} targetDestination={activeDestination} />
+
+                {/* METRICS GRID */}
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-5">
+                  <div className="bg-slate-950 p-3.5 rounded-xl border border-slate-800">
+                    <span className="block text-[10px] text-slate-400 uppercase font-bold">Rent Allocation</span>
+                    <span className="text-emerald-400 font-bold text-sm mt-0.5 block">{hub.Rent_Range}</span>
+                  </div>
+                  <div className="bg-slate-950 p-3.5 rounded-xl border border-slate-800">
+                    <span className="block text-[10px] text-slate-400 uppercase font-bold">Commute</span>
+                    <span className="text-white font-bold text-sm mt-0.5 block">{hub.Commute_Duration} Mins</span>
+                  </div>
+                  <div className="bg-slate-950 p-3.5 rounded-xl border border-slate-800">
+                    <span className="block text-[10px] text-slate-400 uppercase font-bold">TfL Cost / Mo</span>
+                    <span className="text-blue-400 font-bold text-sm mt-0.5 block">£{monthlyFareTotal}</span>
+                  </div>
+                  <div className="bg-slate-950 p-3.5 rounded-xl border border-slate-800">
+                    <span className="block text-[10px] text-slate-400 uppercase font-bold">Safety Score</span>
+                    <span className="text-amber-400 font-bold text-sm mt-0.5 block">{hub.Safety_Score}/100</span>
+                  </div>
+                </div>
+
+                {/* DETAILS */}
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-5">
+                  <div className="bg-slate-900/60 p-4 rounded-xl border border-slate-800/80">
+                    <h4 className="text-[10px] font-bold text-amber-500 uppercase tracking-widest mb-3">💷 Move-In & TMOC Details</h4>
+                    <div className="space-y-2 text-xs">
+                      <div className="flex justify-between text-slate-400"><span>Est. Bills (Energy/Water):</span> <span className="text-white">~£{energyBills}/mo</span></div>
+                      <div className="flex justify-between text-slate-400"><span>Est. Council Tax:</span> <span className="text-white">~£{councilTax}/mo</span></div>
+                      <div className="h-px bg-slate-800 my-1"></div>
+                      <div className="flex justify-between text-slate-400"><span>5-Week Deposit:</span> <span className="text-white">£{fiveWeekDeposit.toLocaleString()}</span></div>
+                      <div className="flex justify-between font-bold text-slate-300"><span>Total Upfront Cash:</span> <span className="text-amber-400">£{upfrontCash.toLocaleString()}</span></div>
+                    </div>
+                  </div>
+                  <div className="bg-slate-900/60 p-4 rounded-xl border border-slate-800/80">
+                    <h4 className="text-[10px] font-bold text-blue-400 uppercase tracking-widest mb-3">🍹 Lifestyle Profile</h4>
+                    <ul className="space-y-2 text-[11px] text-slate-300">
+                      <li>🛒 {hub.Groceries_Vibe}</li>
+                      <li>🌳 {hub.Social_Vibe}</li>
+                      <li>🦉 {hub.Night_Transit}</li>
+                    </ul>
+                  </div>
+                </div>
+
+                <div className="bg-slate-950/80 p-4 rounded-xl border border-slate-800 mb-6 text-xs text-slate-300">
+                  <span className="text-[10px] font-bold text-emerald-400 uppercase block mb-1">Clyde's Verdict</span>
+                  <p>{hub.AI_Verdict}</p>
                 </div>
               </div>
-
-              <div className="bg-slate-950/80 p-4 rounded-xl border border-slate-800 mb-6 text-xs text-slate-300">
-                <span className="text-[10px] font-bold text-emerald-400 uppercase block mb-1">Clyde's Verdict</span>
-                <p>{hub.AI_Verdict}</p>
-              </div>
-
-              <a href={`https://www.rightmove.co.uk/property-to-rent/search.html?searchLocation=${encodeURIComponent(hub.Neighborhood + ', London')}`} target="_blank" rel="noreferrer" className="w-full block bg-emerald-600 hover:bg-emerald-500 text-white font-bold py-3.5 rounded-xl text-center text-sm shadow-lg">
-                View Live Properties on Rightmove ➔
-              </a>
-            </div>
-          ))}
-
-          {results.length > 0 && (
-            <div className="flex justify-between items-center bg-slate-900 p-4 rounded-2xl border border-slate-800">
-              <button onClick={() => setCurrentPage(prev => Math.max(prev - 1, 1))} disabled={currentPage === 1} className="px-5 py-2.5 bg-slate-800 disabled:opacity-30 text-white font-bold text-xs rounded-xl">← Previous</button>
-              <span className="text-xs text-slate-300 font-bold">Page {currentPage} of {totalPages}</span>
-              <button onClick={() => setCurrentPage(prev => Math.min(prev + 1, totalPages))} disabled={currentPage === totalPages} className="px-5 py-2.5 bg-slate-800 disabled:opacity-30 text-white font-bold text-xs rounded-xl">Next →</button>
-            </div>
-          )}
+            );
+          })}
         </div>
       )}
 
