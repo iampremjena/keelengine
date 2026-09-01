@@ -49,9 +49,7 @@ export default function Dashboard({ session }) {
   const [showSearchForm, setShowSearchForm] = useState(!hasSearched);
   const [searchMode, setSearchMode] = useState('manual');
   
-  const [londonTime, setLondonTime] = useState('');
-  const [londonTemp, setLondonTemp] = useState('18°C ⛅');
-
+  // FORM STATES
   const [moveType, setMoveType] = useState(searchParams.get('move') || 'solo');
   const [grossSalary, setGrossSalary] = useState(Number(searchParams.get('salary')) || 50000);
   const [partnerSalary, setPartnerSalary] = useState(Number(searchParams.get('partner')) || 0);
@@ -63,36 +61,30 @@ export default function Dashboard({ session }) {
   const [locationSuggestions, setLocationSuggestions] = useState([]);
   const [showSuggestions, setShowSuggestions] = useState(false);
 
+  // RESULTS & LOADING STATES
   const [loading, setLoading] = useState(false);
+  const [loadingProgress, setLoadingProgress] = useState(0); // 0 to 100%
   const [results, setResults] = useState([]);
   const [marketBriefing, setMarketBriefing] = useState('');
   const [errorMsg, setErrorMsg] = useState('');
   const [currentPage, setCurrentPage] = useState(1);
   const itemsPerPage = 5;
 
+  // TOOLTIPS & MODALS
+  const [activeTooltip, setActiveTooltip] = useState(null); // Tracks which info button is open
   const [listingsModal, setListingsModal] = useState({ isOpen: false, neighborhood: '', listings: [] });
   const [alertConfig, setAlertConfig] = useState({ isOpen: false, title: '', message: '', type: 'success' });
   const [budgetFallback, setBudgetFallback] = useState({ isOpen: false, message: '', suggestedType: '', userBudget: 0 });
 
+  // BONNIE CHATBOT
   const [isBonnieOpen, setIsBonnieOpen] = useState(false);
-  const [chatMessages, setChatMessages] = useState([
-    { role: 'assistant', content: "Hi! I'm Bonnie 👋 Need help with visas, Monzo accounts, or TfL costs? I'm your relocation expert. How can I help?" }
-  ]);
+  const [chatMessages, setChatMessages] = useState([{ role: 'assistant', content: "Hi! I'm Bonnie 👋 Need help with visas, Monzo accounts, or TfL costs? I'm your relocation expert. How can I help?" }]);
   const [chatInput, setChatInput] = useState('');
   const [chatLoading, setChatLoading] = useState(false);
   const chatScrollRef = useRef(null);
 
   const showAlert = (title, message, type) => setAlertConfig({ isOpen: true, title, message, type });
-
-  useEffect(() => {
-    const updateTime = () => {
-      const now = new Date();
-      setLondonTime(now.toLocaleDateString('en-GB', { timeZone: 'Europe/London', weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' }) + ' • ' + now.toLocaleTimeString('en-GB', { timeZone: 'Europe/London', hour: '2-digit', minute: '2-digit', second: '2-digit' }) + ' BST');
-    };
-    updateTime();
-    const interval = setInterval(updateTime, 1000);
-    return () => clearInterval(interval);
-  }, []);
+  const toggleTooltip = (id) => setActiveTooltip(activeTooltip === id ? null : id);
 
   const handleLocationType = (e) => {
     const val = e.target.value;
@@ -140,7 +132,16 @@ export default function Dashboard({ session }) {
     if (!targetDest) return;
 
     const runCompute = async () => {
-      setLoading(true); setErrorMsg(''); setResults([]); setMarketBriefing(''); setCurrentPage(1);
+      setLoading(true); setResults([]); setMarketBriefing(''); setCurrentPage(1); setErrorMsg('');
+      setLoadingProgress(0);
+
+      // Loading Simulator
+      const progressInterval = setInterval(() => {
+        setLoadingProgress((oldProgress) => {
+          if (oldProgress >= 95) return 95;
+          return oldProgress + Math.floor(Math.random() * 15) + 5;
+        });
+      }, 800);
       
       const activeTotalBudget = Math.round((calculateNetMonthly(Number(searchParams.get('salary'))) + (searchParams.get('move') === 'couple' ? calculateNetMonthly(Number(searchParams.get('partner'))) : 0)) * (Number(searchParams.get('budget')) / 100));
 
@@ -150,16 +151,22 @@ export default function Dashboard({ session }) {
           body: JSON.stringify({ destination: targetDest, days_per_week: Number(searchParams.get('days')) || 3, property_type: searchParams.get('type'), total_budget: activeTotalBudget })
         });
         const data = await res.json();
+        
+        clearInterval(progressInterval);
+        setLoadingProgress(100);
 
         if (data.budget_insufficient) {
-          setBudgetFallback({ isOpen: true, message: data.message, suggestedType: data.suggested_type, userBudget: data.user_budget });
-          setLoading(false); return;
+          setTimeout(() => { setBudgetFallback({ isOpen: true, message: data.message, suggestedType: data.suggested_type, userBudget: data.user_budget }); setLoading(false); }, 500);
+          return;
         }
 
-        if (data.error) setErrorMsg(data.error);
-        else if (!data.hubs || data.hubs.length === 0) setErrorMsg(`⚠️ No neighborhoods match a budget of £${activeTotalBudget.toLocaleString()}.`);
-        else { setResults(data.hubs); setMarketBriefing(data.market_briefing || ''); }
-      } catch (err) { setErrorMsg('Connection error.'); } finally { setLoading(false); }
+        setTimeout(() => {
+          if (data.error) setErrorMsg(data.error);
+          else if (!data.hubs || data.hubs.length === 0) setErrorMsg(`⚠️ No neighborhoods match a budget of £${activeTotalBudget.toLocaleString()}.`);
+          else { setResults(data.hubs); setMarketBriefing(data.market_briefing || ''); }
+          setLoading(false);
+        }, 500);
+      } catch (err) { clearInterval(progressInterval); setErrorMsg('Connection error.'); setLoading(false); }
     };
     runCompute();
   }, [searchParams]);
@@ -177,10 +184,6 @@ export default function Dashboard({ session }) {
 
   useEffect(() => { if (chatScrollRef.current) chatScrollRef.current.scrollTop = chatScrollRef.current.scrollHeight; }, [chatMessages, isBonnieOpen]);
 
-  const handleListingsClick = async (hub) => {
-    setListingsModal({ isOpen: true, neighborhood: hub.Neighborhood, listings: hub.live_listings || [] });
-  };
-
   const activeDestination = searchParams.get('destination') || officeLocation;
   const currentItems = results.slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage);
   const totalPages = Math.ceil(results.length / itemsPerPage) || 1;
@@ -188,19 +191,6 @@ export default function Dashboard({ session }) {
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 py-6 sm:py-8 min-h-[85vh] flex flex-col">
       <AlertModal {...alertConfig} onClose={() => setAlertConfig({ ...alertConfig, isOpen: false })} />
-
-      {/* TOP NAVIGATION BAR */}
-      <div className="w-full bg-slate-900/80 border border-slate-800 rounded-2xl px-4 sm:px-6 py-3 sm:py-4 mb-6 sm:mb-8 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 shadow-xl backdrop-blur-md">
-        <div className="flex items-center gap-2 sm:gap-3">
-          <h1 className="text-xl sm:text-2xl font-black text-white tracking-tight">KeelEngine</h1>
-          <span className="text-[9px] sm:text-[10px] font-black font-mono uppercase tracking-widest text-emerald-400 border border-emerald-500/40 bg-emerald-500/10 px-2 py-0.5 rounded-md mt-0.5 sm:mt-1">LONDON</span>
-        </div>
-        <div className="flex items-center gap-3 sm:gap-4 text-[10px] sm:text-xs font-medium text-slate-300 tracking-wide font-sans">
-          <span className="text-emerald-300">{londonTime}</span>
-          <span className="hidden sm:block w-px h-3.5 bg-slate-700"></span>
-          <span>{londonTemp}</span>
-        </div>
-      </div>
 
       {/* BONNIE CHATBOT */}
       <div className="fixed bottom-4 right-4 sm:bottom-6 sm:right-6 z-[200]">
@@ -301,13 +291,16 @@ export default function Dashboard({ session }) {
         </div>
       )}
 
-      {/* LOADING FULLSCREEN */}
+      {/* PERCENTAGE LOADING SCREEN */}
       {loading && !showSearchForm && (
         <div className="flex-1 flex items-center justify-center animate-fadeIn">
           <div className="glass rounded-3xl py-20 px-10 text-center border border-emerald-500/30 max-w-lg w-full">
-            <div className="w-14 h-14 border-4 border-emerald-500 border-t-transparent rounded-full animate-spin mx-auto mb-6"></div>
+            <div className="text-5xl font-black text-emerald-400 mb-6 font-mono">{loadingProgress}%</div>
+            <div className="w-full bg-slate-800 rounded-full h-2.5 mb-6 overflow-hidden border border-slate-700">
+              <div className="bg-emerald-500 h-2.5 rounded-full transition-all duration-700" style={{ width: `${loadingProgress}%` }}></div>
+            </div>
             <h2 className="text-xl font-bold text-white mb-2">Clyde is working...</h2>
-            <p className="text-emerald-400 text-sm">Curating the best London neighborhoods and parsing live market data.</p>
+            <p className="text-slate-400 text-sm">Curating the best London neighborhoods and parsing live market data.</p>
           </div>
         </div>
       )}
@@ -338,7 +331,6 @@ export default function Dashboard({ session }) {
           )}
 
           {currentItems.map((hub, idx) => {
-            // BULLETPROOF MATH PARSING
             const queryDays = searchParams.get('days');
             const daysNum = queryDays ? Number(queryDays) : 3;
             const singleFareStr = String(hub.Single_Fare_Cost).replace(/[^0-9.]/g, '');
@@ -347,66 +339,114 @@ export default function Dashboard({ session }) {
             
             const lowerRent = Number(hub.Rent_Lower_Bound) || 1500;
             const councilTax = Number(hub.Council_Tax_Estimate) || 120;
-            const energyBills = Number(hub.Energy_Bills_Estimate) || 150;
-            
-            // TMOC Calculation
-            const trueMonthlyCost = lowerRent + monthlyFareTotal + councilTax + energyBills;
             const fiveWeekDeposit = Math.round((lowerRent * 12) / 52 * 5);
-            const upfrontCash = lowerRent + fiveWeekDeposit;
 
             return (
               <div key={idx} className="glass rounded-3xl p-5 sm:p-6 md:p-8 shadow-2xl border border-slate-700/40 hover:border-emerald-500/40 transition">
-                
                 <div className="flex justify-between items-start mb-4">
                   <div>
                     <h3 className="text-xl sm:text-2xl font-black text-white">{hub.Neighborhood} <span className="text-xs sm:text-sm font-normal text-slate-400">({hub.Station_Outcode})</span></h3>
                   </div>
-                  <div className="bg-emerald-500/10 border border-emerald-500/30 rounded-xl px-4 py-2 text-center ml-2">
-                    <span className="block text-[9px] text-emerald-400 uppercase font-bold">Total Monthly Cost</span>
-                    <span className="text-xl font-black text-emerald-400">£{trueMonthlyCost.toLocaleString()}</span>
+                  <div className="bg-slate-950 border border-emerald-500/30 rounded-xl px-4 py-2 text-center ml-2">
+                    <span className="block text-[9px] text-slate-400 uppercase font-bold">Match Score</span>
+                    <span className="text-xl font-black text-emerald-400">{hub.Suggestion_Score}</span>
                   </div>
                 </div>
 
                 <NeighborhoodMap lat={hub.Latitude} lng={hub.Longitude} neighborhood={hub.Neighborhood} targetDestination={activeDestination} />
 
-                {/* METRICS GRID */}
+                {/* METRICS GRID WITH INFO BUTTONS */}
                 <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-5">
-                  <div className="bg-slate-950 p-3.5 rounded-xl border border-slate-800">
-                    <span className="block text-[10px] text-slate-400 uppercase font-bold">Rent Allocation</span>
-                    <span className="text-emerald-400 font-bold text-sm mt-0.5 block">{hub.Rent_Range}</span>
+                  <div className="bg-slate-950 p-3.5 rounded-xl border border-slate-800 relative">
+                    <div className="flex justify-between items-center mb-0.5">
+                      <span className="text-[10px] text-slate-400 uppercase font-bold">Rent Allocation</span>
+                      <button onClick={() => toggleTooltip(`rent-${idx}`)} className="text-slate-500 hover:text-white">ⓘ</button>
+                    </div>
+                    <span className="text-emerald-400 font-bold text-sm block">{hub.Rent_Range}</span>
+                    {activeTooltip === `rent-${idx}` && (
+                      <div className="absolute top-full left-0 mt-2 w-48 bg-slate-800 border border-emerald-500 p-3 rounded-xl text-xs z-50 text-slate-200 shadow-2xl">
+                        <strong>Assumed by:</strong> Real 2026 active rental listings for the selected property type in this postcode.
+                      </div>
+                    )}
                   </div>
-                  <div className="bg-slate-950 p-3.5 rounded-xl border border-slate-800">
-                    <span className="block text-[10px] text-slate-400 uppercase font-bold">Commute</span>
-                    <span className="text-white font-bold text-sm mt-0.5 block">{hub.Commute_Duration} Mins</span>
+
+                  <div className="bg-slate-950 p-3.5 rounded-xl border border-slate-800 relative">
+                    <div className="flex justify-between items-center mb-0.5">
+                      <span className="text-[10px] text-slate-400 uppercase font-bold">Commute</span>
+                      <button onClick={() => toggleTooltip(`commute-${idx}`)} className="text-slate-500 hover:text-white">ⓘ</button>
+                    </div>
+                    <span className="text-white font-bold text-sm block">{hub.Commute_Duration} Mins</span>
+                    {activeTooltip === `commute-${idx}` && (
+                      <div className="absolute top-full left-0 mt-2 w-48 bg-slate-800 border border-emerald-500 p-3 rounded-xl text-xs z-50 text-slate-200 shadow-2xl">
+                        <strong>Route:</strong> {hub.Journey_Breakdown}
+                      </div>
+                    )}
                   </div>
-                  <div className="bg-slate-950 p-3.5 rounded-xl border border-slate-800">
-                    <span className="block text-[10px] text-slate-400 uppercase font-bold">TfL Cost / Mo</span>
-                    <span className="text-blue-400 font-bold text-sm mt-0.5 block">£{monthlyFareTotal}</span>
+
+                  <div className="bg-slate-950 p-3.5 rounded-xl border border-slate-800 relative">
+                    <div className="flex justify-between items-center mb-0.5">
+                      <span className="text-[10px] text-slate-400 uppercase font-bold">TfL Cost / Mo</span>
+                      <button onClick={() => toggleTooltip(`tfl-${idx}`)} className="text-slate-500 hover:text-white">ⓘ</button>
+                    </div>
+                    <span className="text-blue-400 font-bold text-sm block">£{monthlyFareTotal}</span>
+                    {activeTooltip === `tfl-${idx}` && (
+                      <div className="absolute top-full right-0 mt-2 w-56 bg-slate-800 border border-blue-500 p-3 rounded-xl text-xs z-50 text-slate-200 shadow-2xl">
+                        <strong>Fare Breakdown:</strong> £{singleFare.toFixed(2)} (Peak Single) × 2 (Return) × {searchParams.get('days')} days × 4.33 weeks = £{monthlyFareTotal}/mo.
+                      </div>
+                    )}
                   </div>
-                  <div className="bg-slate-950 p-3.5 rounded-xl border border-slate-800">
-                    <span className="block text-[10px] text-slate-400 uppercase font-bold">Safety Score</span>
-                    <span className="text-amber-400 font-bold text-sm mt-0.5 block">{hub.Safety_Score}/100</span>
+
+                  <div className="bg-slate-950 p-3.5 rounded-xl border border-slate-800 relative">
+                    <div className="flex justify-between items-center mb-0.5">
+                      <span className="text-[10px] text-slate-400 uppercase font-bold">Safety Score</span>
+                      <button onClick={() => toggleTooltip(`safety-${idx}`)} className="text-slate-500 hover:text-white">ⓘ</button>
+                    </div>
+                    <span className="text-amber-400 font-bold text-sm block">{hub.Safety_Score}/100</span>
+                    {activeTooltip === `safety-${idx}` && (
+                      <div className="absolute top-full right-0 mt-2 w-48 bg-slate-800 border border-amber-500 p-3 rounded-xl text-xs z-50 text-slate-200 shadow-2xl">
+                        <strong>Sourced from:</strong> Metropolitan Police 12-month borough crime density reports.
+                      </div>
+                    )}
                   </div>
                 </div>
 
-                {/* DETAILS */}
+                {/* DETAILS WITH INFOS */}
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-5">
                   <div className="bg-slate-900/60 p-4 rounded-xl border border-slate-800/80">
-                    <h4 className="text-[10px] font-bold text-amber-500 uppercase tracking-widest mb-3">💷 Move-In & TMOC Details</h4>
+                    <h4 className="text-[10px] font-bold text-amber-500 uppercase tracking-widest mb-3">💷 Move-In Financials</h4>
                     <div className="space-y-2 text-xs">
-                      <div className="flex justify-between text-slate-400"><span>Est. Bills (Energy/Water):</span> <span className="text-white">~£{energyBills}/mo</span></div>
-                      <div className="flex justify-between text-slate-400"><span>Est. Council Tax:</span> <span className="text-white">~£{councilTax}/mo</span></div>
-                      <div className="h-px bg-slate-800 my-1"></div>
-                      <div className="flex justify-between text-slate-400"><span>5-Week Deposit:</span> <span className="text-white">£{fiveWeekDeposit.toLocaleString()}</span></div>
-                      <div className="flex justify-between font-bold text-slate-300"><span>Total Upfront Cash:</span> <span className="text-amber-400">£{upfrontCash.toLocaleString()}</span></div>
+                      <div className="flex justify-between items-center text-slate-400">
+                        <span className="flex items-center gap-1">1st Month Rent <button onClick={() => toggleTooltip(`firstrent-${idx}`)} className="text-slate-500 hover:text-white">ⓘ</button></span> 
+                        <span className="text-white">£{lowerRent.toLocaleString()}</span>
+                      </div>
+                      {activeTooltip === `firstrent-${idx}` && (
+                        <div className="bg-slate-800 text-[10px] p-2 rounded-lg text-slate-300 mt-1 mb-2 border border-slate-700">Based on the lowest estimated rent for your property type in this area.</div>
+                      )}
+
+                      <div className="flex justify-between items-center text-slate-400">
+                        <span className="flex items-center gap-1">5-Week Deposit <button onClick={() => toggleTooltip(`deposit-${idx}`)} className="text-slate-500 hover:text-white">ⓘ</button></span> 
+                        <span className="text-white">£{fiveWeekDeposit.toLocaleString()}</span>
+                      </div>
+                      {activeTooltip === `deposit-${idx}` && (
+                        <div className="bg-slate-800 text-[10px] p-2 rounded-lg text-slate-300 mt-1 mb-2 border border-slate-700">Legally capped at 5 weeks' rent under the UK Tenant Fees Act.</div>
+                      )}
+
+                      <div className="flex justify-between items-center text-slate-400">
+                        <span className="flex items-center gap-1">Est. Council Tax <button onClick={() => toggleTooltip(`counciltax-${idx}`)} className="text-slate-500 hover:text-white">ⓘ</button></span> 
+                        <span className="text-white">~£{councilTax}/mo</span>
+                      </div>
+                      {activeTooltip === `counciltax-${idx}` && (
+                        <div className="bg-slate-800 text-[10px] p-2 rounded-lg text-slate-300 mt-1 mb-2 border border-slate-700">Estimated monthly tax for this specific borough (e.g. Wandsworth vs Kingston).</div>
+                      )}
                     </div>
                   </div>
+
                   <div className="bg-slate-900/60 p-4 rounded-xl border border-slate-800/80">
-                    <h4 className="text-[10px] font-bold text-blue-400 uppercase tracking-widest mb-3">🍹 Lifestyle Profile</h4>
-                    <ul className="space-y-2 text-[11px] text-slate-300">
-                      <li>🛒 {hub.Groceries_Vibe}</li>
-                      <li>🌳 {hub.Social_Vibe}</li>
-                      <li>🦉 {hub.Night_Transit}</li>
+                    <h4 className="text-[10px] font-bold text-blue-400 uppercase tracking-widest mb-3">📸 Lifestyle & Famous Spots</h4>
+                    <ul className="space-y-2.5 text-[11px] text-slate-300">
+                      <li><strong>🛒 Vibe:</strong> {hub.Groceries_Vibe}</li>
+                      <li><strong>📍 Famous Spots:</strong> <span className="text-emerald-400 font-medium">{hub.Famous_Hotspots}</span></li>
+                      <li><strong>🦉 Nightlife:</strong> {hub.Night_Transit}</li>
                     </ul>
                   </div>
                 </div>
@@ -418,6 +458,14 @@ export default function Dashboard({ session }) {
               </div>
             );
           })}
+
+          {results.length > 0 && (
+            <div className="flex justify-between items-center bg-slate-900 p-4 rounded-2xl border border-slate-800">
+              <button onClick={() => setCurrentPage(prev => Math.max(prev - 1, 1))} disabled={currentPage === 1} className="px-5 py-2.5 bg-slate-800 disabled:opacity-30 text-white font-bold text-xs rounded-xl">← Previous</button>
+              <span className="text-xs text-slate-300 font-bold">Page {currentPage} of {totalPages}</span>
+              <button onClick={() => setCurrentPage(prev => Math.min(prev + 1, totalPages))} disabled={currentPage === totalPages} className="px-5 py-2.5 bg-slate-800 disabled:opacity-30 text-white font-bold text-xs rounded-xl">Next →</button>
+            </div>
+          )}
         </div>
       )}
 

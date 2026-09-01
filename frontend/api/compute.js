@@ -17,7 +17,6 @@ export default async function handler(req, res) {
     const { destination, days_per_week = 3, property_type = '1-Bed Private Flat', total_budget = 1500 } = req.body;
     const numericBudget = Number(total_budget);
 
-    // 1. Budget Floor Guard
     const absoluteMin = PROPERTY_TIERS[0].minBudget;
     if (numericBudget < absoluteMin) {
       return res.status(200).json({
@@ -25,12 +24,10 @@ export default async function handler(req, res) {
       });
     }
 
-    // 2. Dynamic Escalation Check
     const currentTier = PROPERTY_TIERS.find(t => t.type === property_type) || PROPERTY_TIERS[2];
     
     if (numericBudget < currentTier.minBudget) {
       const suitableTier = [...PROPERTY_TIERS].reverse().find(t => numericBudget >= t.minBudget);
-
       if (suitableTier && suitableTier.type !== property_type) {
         return res.status(200).json({
           budget_insufficient: true,
@@ -42,7 +39,6 @@ export default async function handler(req, res) {
       }
     }
 
-    // 3. Clyde's Enhanced Relocation & Spatial Engine
     const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
     const prompt = `
@@ -55,14 +51,14 @@ export default async function handler(req, res) {
     - Office Days: ${days_per_week} days/week.
     
     DYNAMIC ACCURACY INSTRUCTIONS:
-    - Single Fare Cost: Compute using realistic TfL Zone pricing dynamically.
+    - Single_Fare_Cost: MUST be a pure number (e.g. 3.60). Use real 2026 Peak Fares to Zone 1: Z2=3.60, Z3=3.90, Z4=4.80, Z5=5.30, Z6=5.90.
     - Rent Bounds: Rent_Lower_Bound MUST be <= £${numericBudget}.
-    - Council Tax: Provide a realistic monthly average for the specific Borough (e.g., Wandsworth is cheap ~£70/mo, Kingston is expensive ~£160/mo).
-    - Lifestyle: Be highly specific about supermarkets (Aldi vs Waitrose), local parks, and late-night transit (Night Tube vs Night Bus).
+    - Council Tax: Provide a realistic monthly average for the specific Borough.
+    - Famous_Hotspots: Name 2-3 specific Instagram-viral food markets, famous restaurants, or iconic spots in this neighborhood.
 
     Return ONLY a JSON object with this exact schema:
     {
-      "market_briefing": "String (A 3-sentence executive AI summary analyzing the current rental market, lifestyle vibe, and commute reality for ${destination} on a £${numericBudget} budget. Be brutally honest.)",
+      "market_briefing": "String (A 3-sentence executive AI summary analyzing the market, lifestyle vibe, and commute reality. Be brutally honest.)",
       "hubs": [
         {
           "Neighborhood": "String",
@@ -74,14 +70,15 @@ export default async function handler(req, res) {
           "Single_Fare_Cost": Number,
           "Journey_Breakdown": "String (e.g. Northern Line direct 22 mins)",
           "Rent_Range": "String (e.g. £1,400 - £1,600/mo)",
-          "Rent_Lower_Bound": Number (e.g. 1400 - crucial for upfront cash UI math),
-          "Council_Tax_Estimate": Number (Estimated monthly cost in £),
+          "Rent_Lower_Bound": Number (e.g. 1400),
+          "Council_Tax_Estimate": Number,
           "Safety_Score": Number (1-100),
           "Suggestion_Score": Number (1-100),
-          "Groceries_Vibe": "String (e.g. Waitrose & M&S, plus a large Sainsbury's)",
-          "Social_Vibe": "String (e.g. High pub density, great independent coffee shops, 5 mins to common)",
-          "Night_Transit": "String (e.g. Night Tube available on weekends / Reliance on Night Bus)",
-          "AI_Verdict": "String (2 short sentences explaining why this area fits their budget, commute, and lifestyle)"
+          "Groceries_Vibe": "String",
+          "Social_Vibe": "String",
+          "Night_Transit": "String",
+          "Famous_Hotspots": "String (e.g. 'Borough Market, Padella Pasta, and The Shard view')",
+          "AI_Verdict": "String (2 short sentences on why this fits their budget/commute)"
         }
       ]
     }
@@ -94,7 +91,6 @@ export default async function handler(req, res) {
     });
 
     const parsed = JSON.parse(response.choices[0].message.content);
-    
     const hubs = parsed.hubs || parsed.neighborhoods || parsed.results || (Array.isArray(parsed) ? parsed : []);
     const marketBriefing = parsed.market_briefing || "Market data processed successfully for your destination.";
 
