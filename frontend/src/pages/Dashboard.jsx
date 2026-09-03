@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useSearchParams } from 'react-router-dom';
+import { supabase } from '../supabaseClient';
 import AlertModal from '../components/AlertModal';
 import { MapContainer, TileLayer, Marker, Popup } from 'react-leaflet';
 import L from 'leaflet';
@@ -67,8 +68,13 @@ export default function Dashboard({ session }) {
   const [currentPage, setCurrentPage] = useState(1);
   const itemsPerPage = 5;
 
+  // SAVED SUGGESTIONS STATE
+  const [savedNeighborhoods, setSavedNeighborhoods] = useState([]);
+
+  // TOOLTIPS & MODALS
   const [activeTooltip, setActiveTooltip] = useState(null);
   const [isChecklistOpen, setIsChecklistOpen] = useState(false);
+  const [listingsModal, setListingsModal] = useState({ isOpen: false, neighborhood: '', listings: [] });
   const [alertConfig, setAlertConfig] = useState({ isOpen: false, title: '', message: '', type: 'success' });
   const [budgetFallback, setBudgetFallback] = useState({ isOpen: false, message: '', suggestedType: '', userBudget: 0 });
 
@@ -81,6 +87,57 @@ export default function Dashboard({ session }) {
 
   const showAlert = (title, message, type) => setAlertConfig({ isOpen: true, title, message, type });
   const toggleTooltip = (id) => setActiveTooltip(activeTooltip === id ? null : id);
+
+  // FETCH SAVED NEIGHBORHOODS FOR LOGGED IN USER
+  useEffect(() => {
+    if (session?.user?.id) {
+      fetchSavedSuggestions();
+    }
+  }, [session]);
+
+  const fetchSavedSuggestions = async () => {
+    try {
+      const { data, error } = await supabase.from('saved_suggestions').select('neighborhood').eq('user_id', session.user.id);
+      if (data) setSavedNeighborhoods(data.map(item => item.neighborhood));
+    } catch (e) {
+      console.error("Error fetching saved suggestions:", e);
+    }
+  };
+
+  const handleSaveSuggestion = async (hub) => {
+    if (!session) {
+      return showAlert("Account Required", "Please sign in or create an account to save suggestions to your profile.", "error");
+    }
+
+    if (savedNeighborhoods.includes(hub.Neighborhood)) {
+      return showAlert("Already Saved", `${hub.Neighborhood} is already saved in your profile.`, "info");
+    }
+
+    try {
+      const { error } = await supabase.from('saved_suggestions').insert([{
+        user_id: session.user.id,
+        neighborhood: hub.Neighborhood,
+        destination: activeDestination,
+        property_type: searchParams.get('type') || propertyType,
+        rent_range: hub.Rent_Range,
+        commute_duration: hub.Commute_Duration,
+        details: hub
+      }]);
+
+      if (error) throw error;
+
+      setSavedNeighborhoods([...savedNeighborhoods, hub.Neighborhood]);
+      showAlert("Saved!", `${hub.Neighborhood} has been saved to your profile.`, "success");
+    } catch (e) {
+      console.error("Save error:", e);
+      showAlert("Save Failed", "Could not save suggestion. Please try again.", "error");
+    }
+  };
+
+  const handleListingsClick = async (hub) => {
+    setListingsModal({ isOpen: true, neighborhood: hub.Neighborhood, listings: hub.live_listings || [] });
+    try { await supabase.from('neighborhood_clicks').insert([{ neighborhood: hub.Neighborhood }]); } catch (e) { console.error(e); }
+  };
 
   const handleLocationType = (e) => {
     const val = e.target.value;
@@ -180,6 +237,40 @@ export default function Dashboard({ session }) {
     <div className="max-w-7xl mx-auto px-4 sm:px-6 py-6 sm:py-8 min-h-[85vh] flex flex-col">
       <AlertModal {...alertConfig} onClose={() => setAlertConfig({ ...alertConfig, isOpen: false })} />
 
+      {/* SUGGESTED LISTINGS MODAL */}
+      {listingsModal.isOpen && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-950/80 backdrop-blur-md px-4 animate-fadeIn">
+          <div className="bg-slate-900 border border-emerald-500/50 p-5 sm:p-6 md:p-8 rounded-3xl shadow-2xl max-w-2xl w-full">
+            <div className="flex justify-between items-center mb-4">
+              <h3 className="text-lg sm:text-xl font-bold text-white flex items-center gap-2"><span>🏘️</span> Suggested Listings: {listingsModal.neighborhood}</h3>
+              <button onClick={() => setListingsModal({ ...listingsModal, isOpen: false })} className="text-slate-400 hover:text-white font-bold text-base sm:text-lg px-2">✕</button>
+            </div>
+            
+            <div className="space-y-3 max-h-[60vh] sm:max-h-80 overflow-y-auto pr-2 mb-6">
+              {listingsModal.listings && listingsModal.listings.length > 0 ? (
+                listingsModal.listings.map((item, lIdx) => (
+                  <a key={lIdx} href={item.url} target="_blank" rel="noreferrer" className="flex items-center justify-between bg-slate-950 hover:bg-slate-800 p-3 sm:p-4 rounded-xl border border-slate-800 hover:border-emerald-500/50 transition text-xs">
+                    <span className="text-slate-200 font-medium truncate max-w-[200px] sm:max-w-md">{item.title}</span>
+                    <span className="text-emerald-400 font-bold text-[10px] sm:text-[11px] whitespace-nowrap ml-2">View Property ➔</span>
+                  </a>
+                ))
+              ) : (
+                <div className="text-center py-5 sm:py-6 bg-slate-950 rounded-xl border border-slate-800 space-y-3">
+                  <p className="text-slate-400 text-xs px-2">Search top 3 rental portals directly for live listings in {listingsModal.neighborhood}:</p>
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 sm:gap-3 px-2">
+                    <a href={`https://www.rightmove.co.uk/property-to-rent/search.html?searchLocation=${encodeURIComponent(listingsModal.neighborhood + ', London')}`} target="_blank" rel="noreferrer" className="bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs px-3 py-2.5 rounded-xl block text-center shadow-md transition">Rightmove ➔</a>
+                    <a href={`https://www.zoopla.co.uk/to-rent/property/${encodeURIComponent(listingsModal.neighborhood.replace(/\s+/g, '-').toLowerCase())}/`} target="_blank" rel="noreferrer" className="bg-blue-600 hover:bg-blue-500 text-white font-bold text-xs px-3 py-2.5 rounded-xl block text-center shadow-md transition">Zoopla ➔</a>
+                    <a href={`https://www.openrent.co.uk/properties-to-rent/${encodeURIComponent(listingsModal.neighborhood.replace(/\s+/g, '-').toLowerCase())}-london`} target="_blank" rel="noreferrer" className="bg-amber-600 hover:bg-amber-500 text-white font-bold text-xs px-3 py-2.5 rounded-xl block text-center shadow-md transition">OpenRent ➔</a>
+                  </div>
+                </div>
+              )}
+            </div>
+            
+            <button onClick={() => setListingsModal({ ...listingsModal, isOpen: false })} className="w-full bg-slate-800 hover:bg-slate-700 text-slate-300 font-bold py-3 rounded-xl text-xs transition">Close Window</button>
+          </div>
+        </div>
+      )}
+
       {/* BONNIE CHATBOT */}
       <div className="fixed bottom-4 right-4 sm:bottom-6 sm:right-6 z-[200]">
         {!isBonnieOpen ? (
@@ -218,7 +309,7 @@ export default function Dashboard({ session }) {
         <div className="flex-1 flex justify-center items-center animate-fadeIn pb-12 mt-8">
           <div className="w-full max-w-2xl glass p-6 sm:p-10 rounded-3xl shadow-2xl border border-emerald-900/30">
             <div className="text-center mb-8">
-              <h2 className="text-2xl sm:text-3xl font-black text-white mb-2">Smart Relocation Agent</h2>
+              <h2 className="text-2xl sm:text-3xl font-black text-white mb-2">Smart Relocation Assistant</h2>
               <p className="text-slate-400 text-sm">Tell Clyde your budget and office location, and he'll compute the exact neighborhoods where you can actually afford to live.</p>
             </div>
 
@@ -383,6 +474,8 @@ export default function Dashboard({ session }) {
             let upfrontCash = avgRent + fiveWeekDeposit;
             if (!isUKCreditActive) upfrontCash = (avgRent * 6) + fiveWeekDeposit;
 
+            const isSaved = savedNeighborhoods.includes(hub.Neighborhood);
+
             return (
               <div key={idx} className="glass rounded-3xl p-5 sm:p-6 md:p-8 shadow-2xl border border-slate-700/40 hover:border-emerald-500/40 transition">
                 <div className="flex justify-between items-start mb-4">
@@ -501,6 +594,22 @@ export default function Dashboard({ session }) {
                   <span className="text-[10px] font-bold text-emerald-400 uppercase block mb-1">Clyde's Verdict</span>
                   <p className="font-medium">{hub.AI_Verdict}</p>
                 </div>
+
+                {/* RESTORED ACTION BUTTONS */}
+                <div className="flex flex-col sm:flex-row gap-2.5 sm:gap-3">
+                  <button onClick={() => handleListingsClick(hub)} className="flex-1 bg-emerald-600 hover:bg-emerald-500 text-white font-bold py-3 px-4 rounded-xl text-xs transition shadow-lg flex items-center justify-center gap-1.5">
+                    <span>🏘️</span> Suggested Listings
+                  </button>
+                  
+                  <button onClick={() => handleSaveSuggestion(hub)} className={`flex-1 ${isSaved ? 'bg-slate-800 text-emerald-400 border border-emerald-500/50' : 'bg-slate-800 hover:bg-slate-700 text-white'} font-bold py-3 px-4 rounded-xl text-xs transition shadow-lg flex items-center justify-center gap-1.5 border border-slate-700`}>
+                    <span>{isSaved ? '✅' : '🔖'}</span> {isSaved ? 'Saved to Profile' : 'Save Suggestion'}
+                  </button>
+                  
+                  <a href={`https://www.google.com/maps/dir/?api=1&origin=${hub.Latitude},${hub.Longitude}&destination=${encodeURIComponent(activeDestination)}&travelmode=transit`} target="_blank" rel="noreferrer" className="flex-1 bg-blue-600 hover:bg-blue-500 text-white font-bold py-3 px-4 rounded-xl text-center text-xs transition shadow-lg flex items-center justify-center gap-1.5">
+                    🗺️ Maps Route
+                  </a>
+                </div>
+
               </div>
             );
           })}
