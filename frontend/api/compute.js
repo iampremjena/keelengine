@@ -1,6 +1,5 @@
 import OpenAI from 'openai';
 
-// 2026 London Market Baseline Tiers
 const PROPERTY_TIERS = [
   { type: 'Shared Flatshare / Room', minBudget: 750 },
   { type: 'Studio Flat', minBudget: 1200 },
@@ -17,9 +16,7 @@ export default async function handler(req, res) {
 
     const absoluteMin = PROPERTY_TIERS[0].minBudget;
     if (numericBudget < absoluteMin) {
-      return res.status(200).json({
-        error: `There are no suitable accommodation options in London for a budget of £${numericBudget.toLocaleString()}/mo. The current absolute minimum for shared accommodation starts around £${absoluteMin}/mo.`
-      });
+      return res.status(200).json({ error: `There are no suitable accommodation options in London for a budget of £${numericBudget.toLocaleString()}/mo. The current absolute minimum for shared accommodation starts around £${absoluteMin}/mo.` });
     }
 
     const currentTier = PROPERTY_TIERS.find(t => t.type === property_type) || PROPERTY_TIERS[2];
@@ -41,7 +38,7 @@ export default async function handler(req, res) {
 
     const prompt = `
     You are Clyde, KeelEngine's advanced Enterprise London relocation AI agent.
-    Generate exactly 10 realistic London neighborhood hubs for a tenant commuting to: '${destination}'.
+    Generate exactly 5 realistic London neighborhood hubs for a tenant commuting to: '${destination}'.
     
     STRICT FINANCIAL & SPATIAL ENGINE RULES (Year: 2026):
     - Maximum Combined Budget (Rent + Peak TfL Commute): £${numericBudget}/month.
@@ -49,10 +46,10 @@ export default async function handler(req, res) {
     - Office Days: ${days_per_week} days/week.
     
     DYNAMIC ACCURACY INSTRUCTIONS:
-    - Single_Fare_Cost: MUST be a pure number (e.g. 3.60).
-    - Rent Bounds: Provide Rent_Lower_Bound and Rent_Upper_Bound strictly <= £${numericBudget}.
-    - Vibe: Describe the demographics.
-    - Connectivity: Name airport links or major cycling/transit perks.
+    - Single_Fare_Cost: Provide the exact numerical cost of a peak TfL single journey (e.g. 3.60).
+    - Journey_Breakdown: Explicitly state the exact train/tube lines and the time in minutes (e.g. "Jubilee Line to Waterloo (18 mins)").
+    - Suggestion_Score: A score out of 100 based on how cost-effectively and conveniently the user can commute to '${destination}'. 
+    - SORTING: You MUST sort the final JSON 'hubs' array by 'Suggestion_Score' in descending order (highest score first).
 
     Return ONLY a JSON object with this exact schema:
     {

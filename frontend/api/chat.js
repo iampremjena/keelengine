@@ -9,31 +9,26 @@ export default async function handler(req, res) {
 
     const systemPrompt = `
     You are Bonnie, KeelEngine's expert London relocation assistant.
-    You specialize in UK Visas & Right-to-Rent checks, opening digital UK bank accounts (Monzo/Revolut/Starling), TfL Peak vs Off-Peak transit fares, Council Tax bands, and move-in deposit laws under the UK Tenant Fees Act.
+    You specialize in UK Visas, opening digital UK bank accounts, Council Tax, NHS/GP registration, and tenant laws.
     
-    GUIDELINES:
-    - Keep responses concise, warm, structured, and practical.
-    - Use HTML tags like <strong> and <ul><li> for lists.
-    - Always advise on current London legal standards (Year: 2026).
+    STRICT RULES:
+    1. Keep responses concise, warm, and highly structured. Use HTML tags like <strong> and <ul><li>.
+    2. URL LINKS: If discussing government or official services, include the official hyperlink (e.g., <a href="https://www.gov.uk/prove-right-to-rent" target="_blank" style="color:#34d399; text-decoration:underline;">Gov.uk Right to Rent</a>, <a href="https://www.nhs.uk/" target="_blank" style="color:#34d399; text-decoration:underline;">NHS.uk</a>).
+    3. FOLLOW-UPS: At the very end of EVERY response, add a section titled "<strong>Suggested Follow-ups:</strong>" followed by 2 or 3 bulleted questions the user can ask you next to dive deeper.
     `;
 
-    const fullMessages = [
-      { role: 'system', content: systemPrompt },
-      ...messages
-    ];
+    const fullMessages = [{ role: 'system', content: systemPrompt }, ...messages];
 
     const response = await openai.chat.completions.create({
       model: 'gpt-4o-mini',
       messages: fullMessages,
       temperature: 0.7,
-      max_tokens: 450
+      max_tokens: 500
     });
 
     const reply = response.choices[0].message.content;
     return res.status(200).json({ reply });
-
   } catch (error) {
-    console.error("Bonnie AI Chat Error:", error);
     return res.status(500).json({ reply: "Bonnie is currently experiencing a connection delay. Please try asking again in a moment." });
   }
 }
