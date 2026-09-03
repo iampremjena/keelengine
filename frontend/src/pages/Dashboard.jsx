@@ -1,6 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { supabase } from '../supabaseClient';
 import AlertModal from '../components/AlertModal';
 import { MapContainer, TileLayer, Marker, Popup } from 'react-leaflet';
 import L from 'leaflet';
@@ -54,7 +53,7 @@ export default function Dashboard({ session }) {
   const [budgetSlider, setBudgetSlider] = useState(Number(searchParams.get('budget')) || 40);
   const [officeDays, setOfficeDays] = useState(Number(searchParams.get('days')) || 3);
   const [propertyType, setPropertyType] = useState(searchParams.get('type') || '1-Bed Private Flat');
-  const [hasUKCredit, setHasUKCredit] = useState(searchParams.get('credit') !== 'false'); // Default true
+  const [hasUKCredit, setHasUKCredit] = useState(searchParams.get('credit') !== 'false');
   
   const [officeLocation, setOfficeLocation] = useState(searchParams.get('destination') || '');
   const [locationSuggestions, setLocationSuggestions] = useState([]);
@@ -63,7 +62,6 @@ export default function Dashboard({ session }) {
 
   // RESULTS STATES
   const [loading, setLoading] = useState(false);
-  const [loadingProgress, setLoadingProgress] = useState(0);
   const [results, setResults] = useState([]);
   const [errorMsg, setErrorMsg] = useState('');
   const [currentPage, setCurrentPage] = useState(1);
@@ -120,7 +118,6 @@ export default function Dashboard({ session }) {
     e.preventDefault();
     if (!aiPromptText.trim()) return showAlert("Input Required", "Please describe your ideal property setup.", "error");
     
-    // Attempt to extract a London Area
     const matchedArea = LONDON_AREAS.find(area => aiPromptText.toLowerCase().includes(area.toLowerCase()));
     
     if (!matchedArea) {
@@ -136,12 +133,8 @@ export default function Dashboard({ session }) {
     if (!targetDest) return;
 
     const runCompute = async () => {
-      setLoading(true); setResults([]); setCurrentPage(1); setErrorMsg(''); setLoadingProgress(0); setIsChecklistOpen(false);
+      setLoading(true); setResults([]); setCurrentPage(1); setErrorMsg(''); setIsChecklistOpen(false);
 
-      const progressInterval = setInterval(() => {
-        setLoadingProgress((old) => (old >= 95 ? 95 : old + Math.floor(Math.random() * 15) + 5));
-      }, 800);
-      
       const activeTotalBudget = Math.round((calculateNetMonthly(Number(searchParams.get('salary'))) + (searchParams.get('move') === 'couple' ? calculateNetMonthly(Number(searchParams.get('partner'))) : 0)) * (Number(searchParams.get('budget')) / 100));
 
       try {
@@ -150,22 +143,17 @@ export default function Dashboard({ session }) {
           body: JSON.stringify({ destination: targetDest, days_per_week: Number(searchParams.get('days')) || 3, property_type: searchParams.get('type'), total_budget: activeTotalBudget })
         });
         const data = await res.json();
-        
-        clearInterval(progressInterval);
-        setLoadingProgress(100);
 
         if (data.budget_insufficient) {
-          setTimeout(() => { setBudgetFallback({ isOpen: true, message: data.message, suggestedType: data.suggested_type, userBudget: data.user_budget }); setLoading(false); }, 500);
+          setBudgetFallback({ isOpen: true, message: data.message, suggestedType: data.suggested_type, userBudget: data.user_budget });
+          setLoading(false);
           return;
         }
 
-        setTimeout(() => {
-          if (data.error) setErrorMsg(data.error);
-          else if (!data.hubs || data.hubs.length === 0) setErrorMsg(`⚠️ No neighborhoods match a budget of £${activeTotalBudget.toLocaleString()}.`);
-          else setResults(data.hubs);
-          setLoading(false);
-        }, 500);
-      } catch (err) { clearInterval(progressInterval); setErrorMsg('Connection error.'); setLoading(false); }
+        if (data.error) setErrorMsg(data.error);
+        else if (!data.hubs || data.hubs.length === 0) setErrorMsg(`⚠️ No neighborhoods match a budget of £${activeTotalBudget.toLocaleString()}.`);
+        else setResults(data.hubs);
+      } catch (err) { setErrorMsg('Connection error.'); } finally { setLoading(false); }
     };
     runCompute();
   }, [searchParams]);
@@ -230,7 +218,7 @@ export default function Dashboard({ session }) {
         <div className="flex-1 flex justify-center items-center animate-fadeIn pb-12 mt-8">
           <div className="w-full max-w-2xl glass p-6 sm:p-10 rounded-3xl shadow-2xl border border-emerald-900/30">
             <div className="text-center mb-8">
-              <h2 className="text-2xl sm:text-3xl font-black text-white mb-2">Smart Relocation Agent</h2>
+              <h2 className="text-2xl sm:text-3xl font-black text-white mb-2">Find Your London Commute Sweet Spot</h2>
               <p className="text-slate-400 text-sm">Tell Clyde your budget and office location, and he'll compute the exact neighborhoods where you can actually afford to live.</p>
             </div>
 
@@ -294,7 +282,6 @@ export default function Dashboard({ session }) {
               <form onSubmit={handleAiSubmit} className="space-y-4">
                 <textarea value={aiPromptText} onChange={(e) => setAiPromptText(e.target.value)} placeholder="e.g., I work in Canary Wharf 3 days a week, earn £65k, want a 1-bed flat..." className="w-full h-40 bg-slate-900 border border-slate-700 rounded-xl p-4 text-white text-sm outline-none resize-none focus:border-emerald-500" />
                 
-                {/* EXPAT CREDIT TOGGLE AI */}
                 <div>
                   <label className="block text-[10px] font-bold text-slate-400 uppercase mb-2">UK Credit History / Guarantor?</label>
                   <select value={hasUKCredit ? "yes" : "no"} onChange={(e) => setHasUKCredit(e.target.value === "yes")} className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-3 text-white text-sm outline-none">
@@ -310,16 +297,13 @@ export default function Dashboard({ session }) {
         </div>
       )}
 
-      {/* PERCENTAGE LOADING SCREEN */}
+      {/* REFRESHED LOADING SCREEN */}
       {loading && !showSearchForm && (
-        <div className="flex-1 flex items-center justify-center animate-fadeIn">
-          <div className="glass rounded-3xl py-20 px-10 text-center border border-emerald-500/30 max-w-lg w-full">
-            <div className="text-5xl font-black text-emerald-400 mb-6 font-mono">{loadingProgress}%</div>
-            <div className="w-full bg-slate-800 rounded-full h-2.5 mb-6 overflow-hidden border border-slate-700">
-              <div className="bg-emerald-500 h-2.5 rounded-full transition-all duration-700" style={{ width: `${loadingProgress}%` }}></div>
-            </div>
-            <h2 className="text-xl font-bold text-white mb-2">Clyde is working...</h2>
-            <p className="text-slate-400 text-sm">Curating the best London neighborhoods and parsing live market data.</p>
+        <div className="flex-1 flex items-center justify-center animate-fadeIn py-20">
+          <div className="glass rounded-3xl py-16 px-10 text-center border border-emerald-500/30 max-w-lg w-full shadow-2xl">
+            <div className="w-12 h-12 border-4 border-emerald-500 border-t-transparent rounded-full animate-spin mx-auto mb-6"></div>
+            <h2 className="text-xl font-bold text-white mb-1">Clyde is curating suggestions for you</h2>
+            <p className="text-slate-400 text-xs">It usually takes about 10 seconds</p>
           </div>
         </div>
       )}
@@ -339,14 +323,14 @@ export default function Dashboard({ session }) {
 
           {errorMsg && <div className="p-6 glass rounded-2xl border border-red-900/50 text-amber-400 text-center text-sm">{errorMsg}</div>}
 
-          {/* RELOCATION MASTER CHECKLIST (Collapsible) */}
+          {/* RELOCATION MASTER CHECKLIST */}
           <div className="bg-slate-900 border-l-4 border-emerald-500 rounded-r-2xl shadow-xl overflow-hidden">
             <div className="flex justify-between items-center p-5 cursor-pointer hover:bg-slate-800/50 transition" onClick={() => setIsChecklistOpen(!isChecklistOpen)}>
               <div className="flex items-center gap-3">
                 <span className="text-emerald-400 text-xl">📋</span>
                 <h3 className="text-sm font-bold text-white uppercase tracking-wider">London Relocation Master Checklist</h3>
               </div>
-              <span className="text-emerald-400 font-bold">{isChecklistOpen ? '▲ Close' : '▼ Expand'}</span>
+              <span className="text-emerald-400 font-bold text-xs">{isChecklistOpen ? '▲ Close' : '▼ Expand'}</span>
             </div>
             
             {isChecklistOpen && (
@@ -378,12 +362,26 @@ export default function Dashboard({ session }) {
             const singleFare = parseFloat(singleFareStr) || 0;
             const monthlyFareTotal = Math.round(singleFare * 2 * daysNum * 4.33);
             
-            const lowerRent = Number(hub.Rent_Lower_Bound) || 1500;
-            const fiveWeekDeposit = Math.round((lowerRent * 12) / 52 * 5);
+            // AVERAGE RENT CALCULATION MATH
+            let avgRent = 1500;
+            if (hub.Rent_Lower_Bound && hub.Rent_Upper_Bound) {
+              avgRent = Math.round((Number(hub.Rent_Lower_Bound) + Number(hub.Rent_Upper_Bound)) / 2);
+            } else {
+              const matches = String(hub.Rent_Range).match(/\d[\d,.]*/g);
+              if (matches && matches.length >= 2) {
+                const minR = parseFloat(matches[0].replace(/,/g, ''));
+                const maxR = parseFloat(matches[1].replace(/,/g, ''));
+                if (!isNaN(minR) && !isNaN(maxR)) avgRent = Math.round((minR + maxR) / 2);
+              } else if (matches && matches.length === 1) {
+                avgRent = parseFloat(matches[0].replace(/,/g, ''));
+              }
+            }
+
+            const fiveWeekDeposit = Math.round((avgRent * 12) / 52 * 5);
             
-            // DYNAMIC UPFRONT CASH LOGIC
-            let upfrontCash = lowerRent + fiveWeekDeposit;
-            if (!isUKCreditActive) upfrontCash = (lowerRent * 6) + fiveWeekDeposit;
+            // DYNAMIC UPFRONT CASH LOGIC BASED ON AVERAGE RENT
+            let upfrontCash = avgRent + fiveWeekDeposit;
+            if (!isUKCreditActive) upfrontCash = (avgRent * 6) + fiveWeekDeposit;
 
             return (
               <div key={idx} className="glass rounded-3xl p-5 sm:p-6 md:p-8 shadow-2xl border border-slate-700/40 hover:border-emerald-500/40 transition">
@@ -467,18 +465,18 @@ export default function Dashboard({ session }) {
                     </ul>
                   </div>
 
-                  {/* UPFRONT CASH WARNING */}
+                  {/* UPFRONT CASH WARNING BASED ON AVERAGE RENT */}
                   <div className={`bg-slate-900/60 p-4 rounded-xl border ${!isUKCreditActive ? 'border-amber-500/50' : 'border-slate-800/80'}`}>
                     <h4 className={`text-[10px] font-bold uppercase tracking-widest mb-3 ${!isUKCreditActive ? 'text-amber-500' : 'text-emerald-500'}`}>💷 Upfront Move-In Cash Needed</h4>
                     <div className="space-y-2 text-xs">
                       
                       <div className="flex justify-between items-center text-slate-400">
-                        <span className="flex items-center gap-1">{!isUKCreditActive ? '6 Months Rent' : '1st Month Rent'} <button onClick={() => toggleTooltip(`rentwarn-${idx}`)} className="text-slate-500 hover:text-white">ⓘ</button></span> 
-                        <span className="text-white">£{!isUKCreditActive ? (lowerRent * 6).toLocaleString() : lowerRent.toLocaleString()}</span>
+                        <span className="flex items-center gap-1">{!isUKCreditActive ? '6 Months Rent (Avg)' : '1st Month Rent (Avg)'} <button onClick={() => toggleTooltip(`rentwarn-${idx}`)} className="text-slate-500 hover:text-white">ⓘ</button></span> 
+                        <span className="text-white">£{!isUKCreditActive ? (avgRent * 6).toLocaleString() : avgRent.toLocaleString()}</span>
                       </div>
                       {activeTooltip === `rentwarn-${idx}` && (
                         <div className="bg-slate-800 text-[10px] p-2 rounded-lg text-slate-300 mt-1 mb-2 border border-slate-700">
-                          {!isUKCreditActive ? "Because you stated you do not have a UK credit history, landlords legally and regularly require 6 months rent paid upfront in advance." : "Standard 1 month rent paid upfront before move-in."}
+                          {!isUKCreditActive ? `Based on 6 months upfront using the average rent (£${avgRent.toLocaleString()}/mo) for this neighborhood.` : `Calculated using the average rent (£${avgRent.toLocaleString()}/mo) for this neighborhood.`}
                         </div>
                       )}
 
@@ -487,7 +485,7 @@ export default function Dashboard({ session }) {
                         <span className="text-white">£{fiveWeekDeposit.toLocaleString()}</span>
                       </div>
                       {activeTooltip === `deposit-${idx}` && (
-                        <div className="bg-slate-800 text-[10px] p-2 rounded-lg text-slate-300 mt-1 mb-2 border border-slate-700">Legally capped at 5 weeks' rent under the UK Tenant Fees Act.</div>
+                        <div className="bg-slate-800 text-[10px] p-2 rounded-lg text-slate-300 mt-1 mb-2 border border-slate-700">Calculated as 5 weeks of the average rent (£{avgRent.toLocaleString()}/mo). Capped under the UK Tenant Fees Act.</div>
                       )}
                       
                       <div className="h-px bg-slate-800 my-2"></div>

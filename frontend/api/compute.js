@@ -52,9 +52,9 @@ export default async function handler(req, res) {
     
     DYNAMIC ACCURACY INSTRUCTIONS:
     - Single_Fare_Cost: MUST be a pure number (e.g. 3.60). Use real 2026 Peak Fares to Zone 1: Z2=3.60, Z3=3.90, Z4=4.80, Z5=5.30, Z6=5.90.
-    - Rent Bounds: Rent_Lower_Bound MUST be <= £${numericBudget}.
+    - Rent Bounds: Provide Rent_Lower_Bound (e.g. 1400) and Rent_Upper_Bound (e.g. 1600) strictly <= £${numericBudget}.
     - Vibe: Describe the demographics (e.g. "Popular with Australian expats and young finance professionals. Vibrant and busy.")
-    - Connectivity: Name the airport links or major cycling/transit perks (e.g. "Direct Thameslink to Gatwick; Cycleway 3 to City.")
+    - Connectivity: Name airport links or major cycling/transit perks (e.g. "Direct Thameslink to Gatwick; Cycleway 3 to City.")
 
     Return ONLY a JSON object with this exact schema:
     {
@@ -70,6 +70,8 @@ export default async function handler(req, res) {
           "Journey_Breakdown": "String (e.g. Northern Line direct 22 mins)",
           "Rent_Range": "String (e.g. £1,400 - £1,600/mo)",
           "Rent_Lower_Bound": Number (e.g. 1400),
+          "Rent_Upper_Bound": Number (e.g. 1600),
+          "Council_Tax_Estimate": Number,
           "Safety_Score": Number (1-100),
           "Suggestion_Score": Number (1-100),
           "Vibe": "String (Demographics and neighborhood feel)",
