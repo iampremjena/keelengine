@@ -237,7 +237,7 @@ export default function Dashboard({ session }) {
     <div className="max-w-7xl mx-auto px-4 sm:px-6 py-6 sm:py-8 min-h-[85vh] flex flex-col">
       <AlertModal {...alertConfig} onClose={() => setAlertConfig({ ...alertConfig, isOpen: false })} />
 
-      {/* SUGGESTED LISTINGS MODAL */}
+      {/* MODIFIED SUGGESTED LISTINGS MODAL (Rightmove Removed) */}
       {listingsModal.isOpen && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-950/80 backdrop-blur-md px-4 animate-fadeIn">
           <div className="bg-slate-900 border border-emerald-500/50 p-5 sm:p-6 md:p-8 rounded-3xl shadow-2xl max-w-2xl w-full">
@@ -256,9 +256,9 @@ export default function Dashboard({ session }) {
                 ))
               ) : (
                 <div className="text-center py-5 sm:py-6 bg-slate-950 rounded-xl border border-slate-800 space-y-3">
-                  <p className="text-slate-400 text-xs px-2">Search top 3 rental portals directly for live listings in {listingsModal.neighborhood}:</p>
-                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 sm:gap-3 px-2">
-                    <a href={`https://www.rightmove.co.uk/property-to-rent/search.html?searchLocation=${encodeURIComponent(listingsModal.neighborhood + ', London')}`} target="_blank" rel="noreferrer" className="bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs px-3 py-2.5 rounded-xl block text-center shadow-md transition">Rightmove ➔</a>
+                  <p className="text-slate-400 text-xs px-2">Search top rental portals directly for live listings in {listingsModal.neighborhood}:</p>
+                  {/* Grid updated to 2 columns for Zoopla and OpenRent */}
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 sm:gap-3 px-4">
                     <a href={`https://www.zoopla.co.uk/to-rent/property/${encodeURIComponent(listingsModal.neighborhood.replace(/\s+/g, '-').toLowerCase())}/`} target="_blank" rel="noreferrer" className="bg-blue-600 hover:bg-blue-500 text-white font-bold text-xs px-3 py-2.5 rounded-xl block text-center shadow-md transition">Zoopla ➔</a>
                     <a href={`https://www.openrent.co.uk/properties-to-rent/${encodeURIComponent(listingsModal.neighborhood.replace(/\s+/g, '-').toLowerCase())}-london`} target="_blank" rel="noreferrer" className="bg-amber-600 hover:bg-amber-500 text-white font-bold text-xs px-3 py-2.5 rounded-xl block text-center shadow-md transition">OpenRent ➔</a>
                   </div>
@@ -470,7 +470,7 @@ export default function Dashboard({ session }) {
 
             const fiveWeekDeposit = Math.round((avgRent * 12) / 52 * 5);
             
-            // DYNAMIC UPFRONT CASH LOGIC BASED ON AVERAGE RENT
+            // DYNAMIC UPFRONT CASH LOGIC
             let upfrontCash = avgRent + fiveWeekDeposit;
             if (!isUKCreditActive) upfrontCash = (avgRent * 6) + fiveWeekDeposit;
 
@@ -547,7 +547,6 @@ export default function Dashboard({ session }) {
 
                 {/* EXPANDED DETAILS */}
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-5">
-                  {/* LIFESTYLE CARD */}
                   <div className="bg-slate-900/60 p-4 rounded-xl border border-slate-800/80">
                     <h4 className="text-[10px] font-bold text-blue-400 uppercase tracking-widest mb-3">📸 Local Lifestyle Profile</h4>
                     <ul className="space-y-3 text-xs text-slate-300">
@@ -558,7 +557,6 @@ export default function Dashboard({ session }) {
                     </ul>
                   </div>
 
-                  {/* UPFRONT CASH WARNING BASED ON AVERAGE RENT */}
                   <div className={`bg-slate-900/60 p-4 rounded-xl border ${!isUKCreditActive ? 'border-amber-500/50' : 'border-slate-800/80'}`}>
                     <h4 className={`text-[10px] font-bold uppercase tracking-widest mb-3 ${!isUKCreditActive ? 'text-amber-500' : 'text-emerald-500'}`}>💷 Upfront Move-In Cash Needed</h4>
                     <div className="space-y-2 text-xs">
@@ -595,7 +593,7 @@ export default function Dashboard({ session }) {
                   <p className="font-medium">{hub.AI_Verdict}</p>
                 </div>
 
-                {/* RESTORED ACTION BUTTONS */}
+                {/* ACTION BUTTONS */}
                 <div className="flex flex-col sm:flex-row gap-2.5 sm:gap-3">
                   <button onClick={() => handleListingsClick(hub)} className="flex-1 bg-emerald-600 hover:bg-emerald-500 text-white font-bold py-3 px-4 rounded-xl text-xs transition shadow-lg flex items-center justify-center gap-1.5">
                     <span>🏘️</span> Suggested Listings
