@@ -43,7 +43,7 @@ export default async function handler(req, res) {
 
     const prompt = `
     You are Clyde, KeelEngine's advanced Enterprise London relocation AI agent.
-    Generate a market briefing and exactly 10 realistic London neighborhood hubs for a tenant commuting to: '${destination}'.
+    Generate exactly 10 realistic London neighborhood hubs for a tenant commuting to: '${destination}'.
     
     STRICT FINANCIAL & SPATIAL ENGINE RULES (Year: 2026):
     - Maximum Combined Budget (Rent + Peak TfL Commute): £${numericBudget}/month.
@@ -53,12 +53,11 @@ export default async function handler(req, res) {
     DYNAMIC ACCURACY INSTRUCTIONS:
     - Single_Fare_Cost: MUST be a pure number (e.g. 3.60). Use real 2026 Peak Fares to Zone 1: Z2=3.60, Z3=3.90, Z4=4.80, Z5=5.30, Z6=5.90.
     - Rent Bounds: Rent_Lower_Bound MUST be <= £${numericBudget}.
-    - Council Tax: Provide a realistic monthly average for the specific Borough.
-    - Famous_Hotspots: Name 2-3 specific Instagram-viral food markets, famous restaurants, or iconic spots in this neighborhood.
+    - Vibe: Describe the demographics (e.g. "Popular with Australian expats and young finance professionals. Vibrant and busy.")
+    - Connectivity: Name the airport links or major cycling/transit perks (e.g. "Direct Thameslink to Gatwick; Cycleway 3 to City.")
 
     Return ONLY a JSON object with this exact schema:
     {
-      "market_briefing": "String (A 3-sentence executive AI summary analyzing the market, lifestyle vibe, and commute reality. Be brutally honest.)",
       "hubs": [
         {
           "Neighborhood": "String",
@@ -71,14 +70,13 @@ export default async function handler(req, res) {
           "Journey_Breakdown": "String (e.g. Northern Line direct 22 mins)",
           "Rent_Range": "String (e.g. £1,400 - £1,600/mo)",
           "Rent_Lower_Bound": Number (e.g. 1400),
-          "Council_Tax_Estimate": Number,
           "Safety_Score": Number (1-100),
           "Suggestion_Score": Number (1-100),
-          "Groceries_Vibe": "String",
-          "Social_Vibe": "String",
-          "Night_Transit": "String",
-          "Famous_Hotspots": "String (e.g. 'Borough Market, Padella Pasta, and The Shard view')",
-          "AI_Verdict": "String (2 short sentences on why this fits their budget/commute)"
+          "Vibe": "String (Demographics and neighborhood feel)",
+          "Connectivity": "String (Airport access and cycling options)",
+          "Famous_Spots": "String (Name 2-3 specific Instagram-viral food markets, famous restaurants, or iconic spots)",
+          "Supermarkets": "String (E.g. Large Waitrose, Aldi, and local Sainsbury's)",
+          "AI_Verdict": "String (A single, punchy line describing the neighborhood's essence for this user)"
         }
       ]
     }
@@ -92,9 +90,8 @@ export default async function handler(req, res) {
 
     const parsed = JSON.parse(response.choices[0].message.content);
     const hubs = parsed.hubs || parsed.neighborhoods || parsed.results || (Array.isArray(parsed) ? parsed : []);
-    const marketBriefing = parsed.market_briefing || "Market data processed successfully for your destination.";
 
-    return res.status(200).json({ hubs, market_briefing: marketBriefing });
+    return res.status(200).json({ hubs });
 
   } catch (error) {
     console.error("Compute Error:", error);

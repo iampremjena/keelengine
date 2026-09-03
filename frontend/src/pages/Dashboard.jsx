@@ -42,10 +42,8 @@ function NeighborhoodMap({ lat, lng, neighborhood, targetDestination }) {
 }
 
 export default function Dashboard({ session }) {
-  useEffect(() => { document.title = "KeelEngine London | Relocation & Lifestyle Finder"; }, []);
-
   const [searchParams, setSearchParams] = useSearchParams();
-  const hasSearched = searchParams.has('postcode') || searchParams.has('destination');
+  const hasSearched = searchParams.has('destination');
   const [showSearchForm, setShowSearchForm] = useState(!hasSearched);
   const [searchMode, setSearchMode] = useState('manual');
   
@@ -56,27 +54,27 @@ export default function Dashboard({ session }) {
   const [budgetSlider, setBudgetSlider] = useState(Number(searchParams.get('budget')) || 40);
   const [officeDays, setOfficeDays] = useState(Number(searchParams.get('days')) || 3);
   const [propertyType, setPropertyType] = useState(searchParams.get('type') || '1-Bed Private Flat');
-  const [aiPromptText, setAiPromptText] = useState('');
-  const [officeLocation, setOfficeLocation] = useState(searchParams.get('postcode') || searchParams.get('destination') || '');
+  const [hasUKCredit, setHasUKCredit] = useState(searchParams.get('credit') !== 'false'); // Default true
+  
+  const [officeLocation, setOfficeLocation] = useState(searchParams.get('destination') || '');
   const [locationSuggestions, setLocationSuggestions] = useState([]);
   const [showSuggestions, setShowSuggestions] = useState(false);
+  const [aiPromptText, setAiPromptText] = useState('');
 
-  // RESULTS & LOADING STATES
+  // RESULTS STATES
   const [loading, setLoading] = useState(false);
-  const [loadingProgress, setLoadingProgress] = useState(0); // 0 to 100%
+  const [loadingProgress, setLoadingProgress] = useState(0);
   const [results, setResults] = useState([]);
-  const [marketBriefing, setMarketBriefing] = useState('');
   const [errorMsg, setErrorMsg] = useState('');
   const [currentPage, setCurrentPage] = useState(1);
   const itemsPerPage = 5;
 
-  // TOOLTIPS & MODALS
-  const [activeTooltip, setActiveTooltip] = useState(null); // Tracks which info button is open
-  const [listingsModal, setListingsModal] = useState({ isOpen: false, neighborhood: '', listings: [] });
+  const [activeTooltip, setActiveTooltip] = useState(null);
+  const [isChecklistOpen, setIsChecklistOpen] = useState(false);
   const [alertConfig, setAlertConfig] = useState({ isOpen: false, title: '', message: '', type: 'success' });
   const [budgetFallback, setBudgetFallback] = useState({ isOpen: false, message: '', suggestedType: '', userBudget: 0 });
 
-  // BONNIE CHATBOT
+  // BONNIE
   const [isBonnieOpen, setIsBonnieOpen] = useState(false);
   const [chatMessages, setChatMessages] = useState([{ role: 'assistant', content: "Hi! I'm Bonnie 👋 Need help with visas, Monzo accounts, or TfL costs? I'm your relocation expert. How can I help?" }]);
   const [chatInput, setChatInput] = useState('');
@@ -94,6 +92,7 @@ export default function Dashboard({ session }) {
       setLocationSuggestions(filtered); setShowSuggestions(filtered.length > 0);
     } else setShowSuggestions(false);
   };
+  
   const selectSuggestion = (area) => { setOfficeLocation(area); setShowSuggestions(false); };
 
   const calculateNetMonthly = (gross) => {
@@ -106,25 +105,30 @@ export default function Dashboard({ session }) {
     return (gross - tax) / 12;
   };
 
-  const computedTotalBudget = Math.round((calculateNetMonthly(grossSalary) + (moveType === 'couple' ? calculateNetMonthly(partnerSalary) : 0)) * (budgetSlider / 100));
-
-  const executeSearch = (payload) => {
-    setShowSearchForm(false);
-    setSearchParams(payload);
-  };
-
   const triggerManualSearch = (e) => {
     e.preventDefault();
-    if (!officeLocation.trim()) return showAlert("Location Required", "Please enter an office destination.", "error");
+    const matchedArea = LONDON_AREAS.find(a => a.toLowerCase() === officeLocation.trim().toLowerCase());
+    if (!matchedArea) {
+      return showAlert("Invalid Location", "Please select a valid London destination from the dropdown suggestions.", "error");
+    }
     setShowSuggestions(false);
-    executeSearch({ postcode: officeLocation.trim().toUpperCase(), destination: officeLocation.trim(), move: moveType, salary: grossSalary, partner: partnerSalary, budget: budgetSlider, days: officeDays, type: propertyType });
+    setShowSearchForm(false);
+    setSearchParams({ destination: matchedArea, move: moveType, salary: grossSalary, partner: partnerSalary, budget: budgetSlider, days: officeDays, type: propertyType, credit: hasUKCredit });
   };
 
   const handleAiSubmit = (e) => {
     e.preventDefault();
     if (!aiPromptText.trim()) return showAlert("Input Required", "Please describe your ideal property setup.", "error");
-    const extractedDestination = officeLocation || "Bank"; 
-    executeSearch({ postcode: extractedDestination, destination: extractedDestination, move: moveType, salary: grossSalary, partner: partnerSalary, budget: budgetSlider, days: officeDays, type: propertyType });
+    
+    // Attempt to extract a London Area
+    const matchedArea = LONDON_AREAS.find(area => aiPromptText.toLowerCase().includes(area.toLowerCase()));
+    
+    if (!matchedArea) {
+      return showAlert("Location Not Found", "Clyde couldn't identify a valid London office location from your prompt. Please ensure you type a specific London area (e.g. Bank, Canary Wharf, Soho).", "error");
+    }
+
+    setShowSearchForm(false);
+    setSearchParams({ destination: matchedArea, move: moveType, salary: grossSalary, partner: partnerSalary, budget: budgetSlider, days: officeDays, type: propertyType, credit: hasUKCredit });
   };
 
   useEffect(() => {
@@ -132,15 +136,10 @@ export default function Dashboard({ session }) {
     if (!targetDest) return;
 
     const runCompute = async () => {
-      setLoading(true); setResults([]); setMarketBriefing(''); setCurrentPage(1); setErrorMsg('');
-      setLoadingProgress(0);
+      setLoading(true); setResults([]); setCurrentPage(1); setErrorMsg(''); setLoadingProgress(0); setIsChecklistOpen(false);
 
-      // Loading Simulator
       const progressInterval = setInterval(() => {
-        setLoadingProgress((oldProgress) => {
-          if (oldProgress >= 95) return 95;
-          return oldProgress + Math.floor(Math.random() * 15) + 5;
-        });
+        setLoadingProgress((old) => (old >= 95 ? 95 : old + Math.floor(Math.random() * 15) + 5));
       }, 800);
       
       const activeTotalBudget = Math.round((calculateNetMonthly(Number(searchParams.get('salary'))) + (searchParams.get('move') === 'couple' ? calculateNetMonthly(Number(searchParams.get('partner'))) : 0)) * (Number(searchParams.get('budget')) / 100));
@@ -163,7 +162,7 @@ export default function Dashboard({ session }) {
         setTimeout(() => {
           if (data.error) setErrorMsg(data.error);
           else if (!data.hubs || data.hubs.length === 0) setErrorMsg(`⚠️ No neighborhoods match a budget of £${activeTotalBudget.toLocaleString()}.`);
-          else { setResults(data.hubs); setMarketBriefing(data.market_briefing || ''); }
+          else setResults(data.hubs);
           setLoading(false);
         }, 500);
       } catch (err) { clearInterval(progressInterval); setErrorMsg('Connection error.'); setLoading(false); }
@@ -185,6 +184,7 @@ export default function Dashboard({ session }) {
   useEffect(() => { if (chatScrollRef.current) chatScrollRef.current.scrollTop = chatScrollRef.current.scrollHeight; }, [chatMessages, isBonnieOpen]);
 
   const activeDestination = searchParams.get('destination') || officeLocation;
+  const isUKCreditActive = searchParams.get('credit') !== 'false';
   const currentItems = results.slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage);
   const totalPages = Math.ceil(results.length / itemsPerPage) || 1;
 
@@ -227,10 +227,10 @@ export default function Dashboard({ session }) {
 
       {/* SEARCH FORM */}
       {showSearchForm && (
-        <div className="flex-1 flex justify-center items-center animate-fadeIn pb-12">
+        <div className="flex-1 flex justify-center items-center animate-fadeIn pb-12 mt-8">
           <div className="w-full max-w-2xl glass p-6 sm:p-10 rounded-3xl shadow-2xl border border-emerald-900/30">
             <div className="text-center mb-8">
-              <h2 className="text-2xl sm:text-3xl font-black text-white mb-2">Find Your London Commute Sweet Spot</h2>
+              <h2 className="text-2xl sm:text-3xl font-black text-white mb-2">Smart Relocation Agent</h2>
               <p className="text-slate-400 text-sm">Tell Clyde your budget and office location, and he'll compute the exact neighborhoods where you can actually afford to live.</p>
             </div>
 
@@ -266,7 +266,7 @@ export default function Dashboard({ session }) {
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-5 items-end">
                   <div className="relative">
                     <label className="block text-[10px] font-bold text-slate-300 uppercase mb-2">Office Destination</label>
-                    <input type="text" required value={officeLocation} onChange={handleLocationType} onFocus={() => setShowSuggestions(true)} className="w-full bg-slate-900 border border-slate-700 rounded-xl px-4 py-3 text-white text-sm outline-none" />
+                    <input type="text" required value={officeLocation} onChange={handleLocationType} onFocus={() => setShowSuggestions(true)} placeholder="e.g. Bank, Soho, Canary Wharf" className="w-full bg-slate-900 border border-slate-700 rounded-xl px-4 py-3 text-white text-sm outline-none" />
                     {showSuggestions && locationSuggestions.length > 0 && (
                       <ul className="absolute z-50 w-full bg-slate-800 border border-slate-700 rounded-xl mt-1 overflow-hidden shadow-2xl">
                         {locationSuggestions.map((area, idx) => <li key={idx} onClick={() => selectSuggestion(area)} className="px-4 py-3 text-sm text-white hover:bg-emerald-600 cursor-pointer">{area}, London</li>)}
@@ -279,11 +279,30 @@ export default function Dashboard({ session }) {
                   </div>
                 </div>
 
+                {/* EXPAT CREDIT TOGGLE */}
+                <div className="border-t border-slate-800 pt-5">
+                  <label className="block text-[10px] sm:text-xs font-bold text-slate-300 uppercase mb-2">Do you have a UK Credit History or UK Guarantor?</label>
+                  <select value={hasUKCredit ? "yes" : "no"} onChange={(e) => setHasUKCredit(e.target.value === "yes")} className="w-full bg-slate-900 border border-slate-700 rounded-xl px-4 py-3 text-white text-sm outline-none">
+                    <option value="yes">Yes, I have one (Standard Referencing)</option>
+                    <option value="no">No, I am relocating from abroad (Upfront Rent Required)</option>
+                  </select>
+                </div>
+
                 <button type="submit" className="w-full bg-emerald-600 hover:bg-emerald-500 text-white font-bold py-4 rounded-xl shadow-xl text-sm transition">Find My Neighborhoods ➔</button>
               </form>
             ) : (
               <form onSubmit={handleAiSubmit} className="space-y-4">
                 <textarea value={aiPromptText} onChange={(e) => setAiPromptText(e.target.value)} placeholder="e.g., I work in Canary Wharf 3 days a week, earn £65k, want a 1-bed flat..." className="w-full h-40 bg-slate-900 border border-slate-700 rounded-xl p-4 text-white text-sm outline-none resize-none focus:border-emerald-500" />
+                
+                {/* EXPAT CREDIT TOGGLE AI */}
+                <div>
+                  <label className="block text-[10px] font-bold text-slate-400 uppercase mb-2">UK Credit History / Guarantor?</label>
+                  <select value={hasUKCredit ? "yes" : "no"} onChange={(e) => setHasUKCredit(e.target.value === "yes")} className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-3 text-white text-sm outline-none">
+                    <option value="yes">Yes, I have one</option>
+                    <option value="no">No, I am relocating from abroad</option>
+                  </select>
+                </div>
+
                 <button type="submit" className="w-full bg-emerald-600 hover:bg-emerald-500 text-white font-bold py-4 rounded-xl shadow-xl text-sm transition">✨ Ask Clyde</button>
               </form>
             )}
@@ -320,15 +339,37 @@ export default function Dashboard({ session }) {
 
           {errorMsg && <div className="p-6 glass rounded-2xl border border-red-900/50 text-amber-400 text-center text-sm">{errorMsg}</div>}
 
-          {marketBriefing && (
-            <div className="bg-slate-900 border-l-4 border-emerald-500 p-5 sm:p-6 rounded-r-2xl shadow-xl">
-              <div className="flex items-center gap-2 mb-2">
-                <span className="text-emerald-400 text-lg">🧠</span>
-                <h3 className="text-sm font-bold text-white uppercase tracking-wider">Market Briefing</h3>
+          {/* RELOCATION MASTER CHECKLIST (Collapsible) */}
+          <div className="bg-slate-900 border-l-4 border-emerald-500 rounded-r-2xl shadow-xl overflow-hidden">
+            <div className="flex justify-between items-center p-5 cursor-pointer hover:bg-slate-800/50 transition" onClick={() => setIsChecklistOpen(!isChecklistOpen)}>
+              <div className="flex items-center gap-3">
+                <span className="text-emerald-400 text-xl">📋</span>
+                <h3 className="text-sm font-bold text-white uppercase tracking-wider">London Relocation Master Checklist</h3>
               </div>
-              <p className="text-slate-300 text-sm leading-relaxed">{marketBriefing}</p>
+              <span className="text-emerald-400 font-bold">{isChecklistOpen ? '▲ Close' : '▼ Expand'}</span>
             </div>
-          )}
+            
+            {isChecklistOpen && (
+              <div className="px-5 pb-6 text-sm text-slate-300 space-y-5 border-t border-slate-800 pt-4">
+                <div>
+                  <strong className="text-emerald-400 block mb-1">1. Right to Rent & Visas</strong>
+                  <p>UK landlords are legally required to verify your visa. You must generate a "Share Code" from the Gov.uk website before viewing properties. Do not pay any holding fees via wire transfer.</p>
+                </div>
+                <div>
+                  <strong className="text-emerald-400 block mb-1">2. Council Tax Bands</strong>
+                  <p>Council Tax is a mandatory monthly municipal bill. It varies drastically by Borough (e.g. Wandsworth is very cheap, Kingston is expensive). Properties are graded Band A (Cheapest) to H (Most Expensive). Expect to pay roughly £80 - £150/mo depending on the Borough and Band.</p>
+                </div>
+                <div>
+                  <strong className="text-emerald-400 block mb-1">3. Setting up a UK Bank</strong>
+                  <p>Traditional banks (HSBC, Barclays) require strict proof of address (utility bills). When you first land, immediately download <strong>Monzo, Revolut, or Starling</strong> which only require your BRP and passport to open an account.</p>
+                </div>
+                <div>
+                  <strong className="text-emerald-400 block mb-1">4. Healthcare (NHS Registration)</strong>
+                  <p>Once you have a tenancy agreement, go to the NHS website to find your nearest GP Surgery. Registration is free and essential for receiving standard healthcare.</p>
+                </div>
+              </div>
+            )}
+          </div>
 
           {currentItems.map((hub, idx) => {
             const queryDays = searchParams.get('days');
@@ -338,8 +379,11 @@ export default function Dashboard({ session }) {
             const monthlyFareTotal = Math.round(singleFare * 2 * daysNum * 4.33);
             
             const lowerRent = Number(hub.Rent_Lower_Bound) || 1500;
-            const councilTax = Number(hub.Council_Tax_Estimate) || 120;
             const fiveWeekDeposit = Math.round((lowerRent * 12) / 52 * 5);
+            
+            // DYNAMIC UPFRONT CASH LOGIC
+            let upfrontCash = lowerRent + fiveWeekDeposit;
+            if (!isUKCreditActive) upfrontCash = (lowerRent * 6) + fiveWeekDeposit;
 
             return (
               <div key={idx} className="glass rounded-3xl p-5 sm:p-6 md:p-8 shadow-2xl border border-slate-700/40 hover:border-emerald-500/40 transition">
@@ -390,7 +434,7 @@ export default function Dashboard({ session }) {
                     </div>
                     <span className="text-blue-400 font-bold text-sm block">£{monthlyFareTotal}</span>
                     {activeTooltip === `tfl-${idx}` && (
-                      <div className="absolute top-full right-0 mt-2 w-56 bg-slate-800 border border-blue-500 p-3 rounded-xl text-xs z-50 text-slate-200 shadow-2xl">
+                      <div className="absolute top-full right-0 lg:left-0 mt-2 w-56 bg-slate-800 border border-blue-500 p-3 rounded-xl text-xs z-50 text-slate-200 shadow-2xl">
                         <strong>Fare Breakdown:</strong> £{singleFare.toFixed(2)} (Peak Single) × 2 (Return) × {searchParams.get('days')} days × 4.33 weeks = £{monthlyFareTotal}/mo.
                       </div>
                     )}
@@ -410,17 +454,32 @@ export default function Dashboard({ session }) {
                   </div>
                 </div>
 
-                {/* DETAILS WITH INFOS */}
+                {/* EXPANDED DETAILS */}
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-5">
+                  {/* LIFESTYLE CARD */}
                   <div className="bg-slate-900/60 p-4 rounded-xl border border-slate-800/80">
-                    <h4 className="text-[10px] font-bold text-amber-500 uppercase tracking-widest mb-3">💷 Move-In Financials</h4>
+                    <h4 className="text-[10px] font-bold text-blue-400 uppercase tracking-widest mb-3">📸 Local Lifestyle Profile</h4>
+                    <ul className="space-y-3 text-xs text-slate-300">
+                      <li><strong className="text-slate-100 block mb-0.5">🎭 Vibe & Community:</strong> {hub.Vibe}</li>
+                      <li><strong className="text-slate-100 block mb-0.5">📍 Famous Spots:</strong> <span className="text-emerald-400 font-medium">{hub.Famous_Spots}</span></li>
+                      <li><strong className="text-slate-100 block mb-0.5">✈️ Connectivity:</strong> {hub.Connectivity}</li>
+                      <li><strong className="text-slate-100 block mb-0.5">🛒 Groceries:</strong> {hub.Supermarkets}</li>
+                    </ul>
+                  </div>
+
+                  {/* UPFRONT CASH WARNING */}
+                  <div className={`bg-slate-900/60 p-4 rounded-xl border ${!isUKCreditActive ? 'border-amber-500/50' : 'border-slate-800/80'}`}>
+                    <h4 className={`text-[10px] font-bold uppercase tracking-widest mb-3 ${!isUKCreditActive ? 'text-amber-500' : 'text-emerald-500'}`}>💷 Upfront Move-In Cash Needed</h4>
                     <div className="space-y-2 text-xs">
+                      
                       <div className="flex justify-between items-center text-slate-400">
-                        <span className="flex items-center gap-1">1st Month Rent <button onClick={() => toggleTooltip(`firstrent-${idx}`)} className="text-slate-500 hover:text-white">ⓘ</button></span> 
-                        <span className="text-white">£{lowerRent.toLocaleString()}</span>
+                        <span className="flex items-center gap-1">{!isUKCreditActive ? '6 Months Rent' : '1st Month Rent'} <button onClick={() => toggleTooltip(`rentwarn-${idx}`)} className="text-slate-500 hover:text-white">ⓘ</button></span> 
+                        <span className="text-white">£{!isUKCreditActive ? (lowerRent * 6).toLocaleString() : lowerRent.toLocaleString()}</span>
                       </div>
-                      {activeTooltip === `firstrent-${idx}` && (
-                        <div className="bg-slate-800 text-[10px] p-2 rounded-lg text-slate-300 mt-1 mb-2 border border-slate-700">Based on the lowest estimated rent for your property type in this area.</div>
+                      {activeTooltip === `rentwarn-${idx}` && (
+                        <div className="bg-slate-800 text-[10px] p-2 rounded-lg text-slate-300 mt-1 mb-2 border border-slate-700">
+                          {!isUKCreditActive ? "Because you stated you do not have a UK credit history, landlords legally and regularly require 6 months rent paid upfront in advance." : "Standard 1 month rent paid upfront before move-in."}
+                        </div>
                       )}
 
                       <div className="flex justify-between items-center text-slate-400">
@@ -430,30 +489,19 @@ export default function Dashboard({ session }) {
                       {activeTooltip === `deposit-${idx}` && (
                         <div className="bg-slate-800 text-[10px] p-2 rounded-lg text-slate-300 mt-1 mb-2 border border-slate-700">Legally capped at 5 weeks' rent under the UK Tenant Fees Act.</div>
                       )}
-
-                      <div className="flex justify-between items-center text-slate-400">
-                        <span className="flex items-center gap-1">Est. Council Tax <button onClick={() => toggleTooltip(`counciltax-${idx}`)} className="text-slate-500 hover:text-white">ⓘ</button></span> 
-                        <span className="text-white">~£{councilTax}/mo</span>
+                      
+                      <div className="h-px bg-slate-800 my-2"></div>
+                      <div className="flex justify-between font-bold text-slate-100 text-sm">
+                        <span>Total Cash Needed:</span> 
+                        <span className={!isUKCreditActive ? "text-amber-400" : "text-emerald-400"}>£{upfrontCash.toLocaleString()}</span>
                       </div>
-                      {activeTooltip === `counciltax-${idx}` && (
-                        <div className="bg-slate-800 text-[10px] p-2 rounded-lg text-slate-300 mt-1 mb-2 border border-slate-700">Estimated monthly tax for this specific borough (e.g. Wandsworth vs Kingston).</div>
-                      )}
                     </div>
-                  </div>
-
-                  <div className="bg-slate-900/60 p-4 rounded-xl border border-slate-800/80">
-                    <h4 className="text-[10px] font-bold text-blue-400 uppercase tracking-widest mb-3">📸 Lifestyle & Famous Spots</h4>
-                    <ul className="space-y-2.5 text-[11px] text-slate-300">
-                      <li><strong>🛒 Vibe:</strong> {hub.Groceries_Vibe}</li>
-                      <li><strong>📍 Famous Spots:</strong> <span className="text-emerald-400 font-medium">{hub.Famous_Hotspots}</span></li>
-                      <li><strong>🦉 Nightlife:</strong> {hub.Night_Transit}</li>
-                    </ul>
                   </div>
                 </div>
 
                 <div className="bg-slate-950/80 p-4 rounded-xl border border-slate-800 mb-6 text-xs text-slate-300">
                   <span className="text-[10px] font-bold text-emerald-400 uppercase block mb-1">Clyde's Verdict</span>
-                  <p>{hub.AI_Verdict}</p>
+                  <p className="font-medium">{hub.AI_Verdict}</p>
                 </div>
               </div>
             );
