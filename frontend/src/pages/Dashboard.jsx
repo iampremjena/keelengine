@@ -4,6 +4,7 @@ import { supabase } from '../supabaseClient';
 import AlertModal from '../components/AlertModal';
 import { MapContainer, TileLayer, Marker, Popup } from 'react-leaflet';
 import L from 'leaflet';
+import * as XLSX from 'xlsx';
 import markerIcon from 'leaflet/dist/images/marker-icon.png';
 import markerShadow from 'leaflet/dist/images/marker-shadow.png';
 
@@ -41,7 +42,7 @@ function NeighborhoodMap({ lat, lng, neighborhood, targetDestination }) {
   );
 }
 
-export default function Dashboard({ session }) {
+export default function Dashboard({ session, profile, workspace }) {
   const [searchParams, setSearchParams] = useSearchParams();
   const hasSearched = searchParams.has('destination');
   const [showSearchForm, setShowSearchForm] = useState(!hasSearched);
@@ -61,12 +62,13 @@ export default function Dashboard({ session }) {
   const [showSuggestions, setShowSuggestions] = useState(false);
   const [aiPromptText, setAiPromptText] = useState('');
 
-  // RESULTS STATES
+  // RESULTS & BATCH STATES
   const [loading, setLoading] = useState(false);
   const [results, setResults] = useState([]);
   const [errorMsg, setErrorMsg] = useState('');
   const [currentPage, setCurrentPage] = useState(1);
   const itemsPerPage = 5;
+  const [batchProgress, setBatchProgress] = useState({ active: false, total: 0, current: 0, currentName: '' });
 
   // SAVED SUGGESTIONS STATE
   const [savedNeighborhoods, setSavedNeighborhoods] = useState([]);
@@ -88,7 +90,7 @@ export default function Dashboard({ session }) {
   const showAlert = (title, message, type) => setAlertConfig({ isOpen: true, title, message, type });
   const toggleTooltip = (id) => setActiveTooltip(activeTooltip === id ? null : id);
 
-  // FETCH SAVED NEIGHBORHOODS FOR LOGGED IN USER
+  // FETCH SAVED NEIGHBORHOODS
   useEffect(() => {
     if (session?.user?.id) {
       fetchSavedSuggestions();
@@ -97,21 +99,16 @@ export default function Dashboard({ session }) {
 
   const fetchSavedSuggestions = async () => {
     try {
-      const { data, error } = await supabase.from('saved_suggestions').select('neighborhood').eq('user_id', session.user.id);
+      const { data } = await supabase.from('saved_suggestions').select('neighborhood').eq('user_id', session.user.id);
       if (data) setSavedNeighborhoods(data.map(item => item.neighborhood));
     } catch (e) {
-      console.error("Error fetching saved suggestions:", e);
+      console.error(e);
     }
   };
 
   const handleSaveSuggestion = async (hub) => {
-    if (!session) {
-      return showAlert("Account Required", "Please sign in or create an account to save suggestions to your profile.", "error");
-    }
-
-    if (savedNeighborhoods.includes(hub.Neighborhood)) {
-      return showAlert("Already Saved", `${hub.Neighborhood} is already saved in your profile.`, "info");
-    }
+    if (!session) return showAlert("Account Required", "Please sign in or create an account to save suggestions.", "error");
+    if (savedNeighborhoods.includes(hub.Neighborhood)) return showAlert("Already Saved", `${hub.Neighborhood} is already saved.`, "info");
 
     try {
       const { error } = await supabase.from('saved_suggestions').insert([{
@@ -123,20 +120,59 @@ export default function Dashboard({ session }) {
         commute_duration: hub.Commute_Duration,
         details: hub
       }]);
-
       if (error) throw error;
-
       setSavedNeighborhoods([...savedNeighborhoods, hub.Neighborhood]);
-      showAlert("Saved!", `${hub.Neighborhood} has been saved to your profile.`, "success");
+      showAlert("Saved!", `${hub.Neighborhood} saved to your profile.`, "success");
     } catch (e) {
-      console.error("Save error:", e);
-      showAlert("Save Failed", "Could not save suggestion. Please try again.", "error");
+      showAlert("Save Failed", e.message, "error");
     }
   };
 
-  const handleListingsClick = async (hub) => {
+  const handleListingsClick = (hub) => {
     setListingsModal({ isOpen: true, neighborhood: hub.Neighborhood, listings: hub.live_listings || [] });
-    try { await supabase.from('neighborhood_clicks').insert([{ neighborhood: hub.Neighborhood }]); } catch (e) { console.error(e); }
+  };
+
+  // BATCH TEMPLATE & UPLOAD
+  const downloadTemplate = () => {
+    const ws = XLSX.utils.aoa_to_sheet([
+      ["Employee Name", "Office Location", "Post Code", "Preferences", "Salary", "Employee Email", "Watcher Email"],
+      ["Sarah Jenkins", "Canary Wharf", "E14", "1-Bed Private", 65000, "sarah@example.com", "hr@yourcompany.com"]
+    ]);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, "Employees");
+    XLSX.writeFile(wb, "KeelEngine_Batch_Template.xlsx");
+  };
+
+  const handleFileUpload = (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = async (evt) => {
+      const bstr = evt.target.result;
+      const wb = XLSX.read(bstr, { type: 'binary' });
+      const ws = wb.Sheets[wb.SheetNames[0]];
+      const data = XLSX.utils.sheet_to_json(ws);
+      
+      setBatchProgress({ active: true, total: data.length, current: 0, currentName: '' });
+
+      for (let i = 0; i < data.length; i++) {
+        const employee = data[i];
+        setBatchProgress(prev => ({ ...prev, current: i + 1, currentName: employee['Employee Name'] }));
+        try {
+          await fetch('/api/batch-relocate', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(employee)
+          });
+        } catch (err) {
+          console.error(`Failed: ${employee['Employee Name']}`);
+        }
+      }
+      setBatchProgress({ active: false, total: 0, current: 0, currentName: '' });
+      showAlert("Batch Complete", `Successfully processed and emailed ${data.length} employees.`, "success");
+    };
+    reader.readAsBinaryString(file);
   };
 
   const handleLocationType = (e) => {
@@ -163,9 +199,7 @@ export default function Dashboard({ session }) {
   const triggerManualSearch = (e) => {
     e.preventDefault();
     const matchedArea = LONDON_AREAS.find(a => a.toLowerCase() === officeLocation.trim().toLowerCase());
-    if (!matchedArea) {
-      return showAlert("Invalid Location", "Please select a valid London destination from the dropdown suggestions.", "error");
-    }
+    if (!matchedArea) return showAlert("Invalid Location", "Please select a valid London destination.", "error");
     setShowSuggestions(false);
     setShowSearchForm(false);
     setSearchParams({ destination: matchedArea, move: moveType, salary: grossSalary, partner: partnerSalary, budget: budgetSlider, days: officeDays, type: propertyType, credit: hasUKCredit });
@@ -174,13 +208,8 @@ export default function Dashboard({ session }) {
   const handleAiSubmit = (e) => {
     e.preventDefault();
     if (!aiPromptText.trim()) return showAlert("Input Required", "Please describe your ideal property setup.", "error");
-    
     const matchedArea = LONDON_AREAS.find(area => aiPromptText.toLowerCase().includes(area.toLowerCase()));
-    
-    if (!matchedArea) {
-      return showAlert("Location Not Found", "Clyde couldn't identify a valid London office location from your prompt. Please ensure you type a specific London area (e.g. Bank, Canary Wharf, Soho).", "error");
-    }
-
+    if (!matchedArea) return showAlert("Location Not Found", "Please include a valid London area in your prompt.", "error");
     setShowSearchForm(false);
     setSearchParams({ destination: matchedArea, move: moveType, salary: grossSalary, partner: partnerSalary, budget: budgetSlider, days: officeDays, type: propertyType, credit: hasUKCredit });
   };
@@ -191,7 +220,6 @@ export default function Dashboard({ session }) {
 
     const runCompute = async () => {
       setLoading(true); setResults([]); setCurrentPage(1); setErrorMsg(''); setIsChecklistOpen(false);
-
       const activeTotalBudget = Math.round((calculateNetMonthly(Number(searchParams.get('salary'))) + (searchParams.get('move') === 'couple' ? calculateNetMonthly(Number(searchParams.get('partner'))) : 0)) * (Number(searchParams.get('budget')) / 100));
 
       try {
@@ -200,13 +228,10 @@ export default function Dashboard({ session }) {
           body: JSON.stringify({ destination: targetDest, days_per_week: Number(searchParams.get('days')) || 3, property_type: searchParams.get('type'), total_budget: activeTotalBudget })
         });
         const data = await res.json();
-
         if (data.budget_insufficient) {
           setBudgetFallback({ isOpen: true, message: data.message, suggestedType: data.suggested_type, userBudget: data.user_budget });
-          setLoading(false);
-          return;
+          setLoading(false); return;
         }
-
         if (data.error) setErrorMsg(data.error);
         else if (!data.hubs || data.hubs.length === 0) setErrorMsg(`⚠️ No neighborhoods match a budget of £${activeTotalBudget.toLocaleString()}.`);
         else setResults(data.hubs);
@@ -223,7 +248,7 @@ export default function Dashboard({ session }) {
       const res = await fetch('/api/chat', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ messages: updatedMessages }) });
       const data = await res.json();
       if (data.reply) setChatMessages([...updatedMessages, { role: 'assistant', content: data.reply }]);
-    } catch (err) { setChatMessages([...updatedMessages, { role: 'assistant', content: "Connection issue. Please try again." }]); } finally { setChatLoading(false); }
+    } catch (err) { setChatMessages([...updatedMessages, { role: 'assistant', content: "Connection issue." }]); } finally { setChatLoading(false); }
   };
 
   useEffect(() => { if (chatScrollRef.current) chatScrollRef.current.scrollTop = chatScrollRef.current.scrollHeight; }, [chatMessages, isBonnieOpen]);
@@ -237,35 +262,23 @@ export default function Dashboard({ session }) {
     <div className="max-w-7xl mx-auto px-4 sm:px-6 py-6 sm:py-8 min-h-[85vh] flex flex-col">
       <AlertModal {...alertConfig} onClose={() => setAlertConfig({ ...alertConfig, isOpen: false })} />
 
-      {/* MODIFIED SUGGESTED LISTINGS MODAL (Rightmove Removed) */}
+      {/* SUGGESTED LISTINGS MODAL */}
       {listingsModal.isOpen && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-950/80 backdrop-blur-md px-4 animate-fadeIn">
           <div className="bg-slate-900 border border-emerald-500/50 p-5 sm:p-6 md:p-8 rounded-3xl shadow-2xl max-w-2xl w-full">
             <div className="flex justify-between items-center mb-4">
               <h3 className="text-lg sm:text-xl font-bold text-white flex items-center gap-2"><span>🏘️</span> Suggested Listings: {listingsModal.neighborhood}</h3>
-              <button onClick={() => setListingsModal({ ...listingsModal, isOpen: false })} className="text-slate-400 hover:text-white font-bold text-base sm:text-lg px-2">✕</button>
+              <button onClick={() => setListingsModal({ ...listingsModal, isOpen: false })} className="text-slate-400 hover:text-white font-bold text-base px-2">✕</button>
             </div>
-            
-            <div className="space-y-3 max-h-[60vh] sm:max-h-80 overflow-y-auto pr-2 mb-6">
-              {listingsModal.listings && listingsModal.listings.length > 0 ? (
-                listingsModal.listings.map((item, lIdx) => (
-                  <a key={lIdx} href={item.url} target="_blank" rel="noreferrer" className="flex items-center justify-between bg-slate-950 hover:bg-slate-800 p-3 sm:p-4 rounded-xl border border-slate-800 hover:border-emerald-500/50 transition text-xs">
-                    <span className="text-slate-200 font-medium truncate max-w-[200px] sm:max-w-md">{item.title}</span>
-                    <span className="text-emerald-400 font-bold text-[10px] sm:text-[11px] whitespace-nowrap ml-2">View Property ➔</span>
-                  </a>
-                ))
-              ) : (
-                <div className="text-center py-5 sm:py-6 bg-slate-950 rounded-xl border border-slate-800 space-y-3">
-                  <p className="text-slate-400 text-xs px-2">Search top rental portals directly for live listings in {listingsModal.neighborhood}:</p>
-                  {/* Grid updated to 2 columns for Zoopla and OpenRent */}
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 sm:gap-3 px-4">
-                    <a href={`https://www.zoopla.co.uk/to-rent/property/${encodeURIComponent(listingsModal.neighborhood.replace(/\s+/g, '-').toLowerCase())}/`} target="_blank" rel="noreferrer" className="bg-blue-600 hover:bg-blue-500 text-white font-bold text-xs px-3 py-2.5 rounded-xl block text-center shadow-md transition">Zoopla ➔</a>
-                    <a href={`https://www.openrent.co.uk/properties-to-rent/${encodeURIComponent(listingsModal.neighborhood.replace(/\s+/g, '-').toLowerCase())}-london`} target="_blank" rel="noreferrer" className="bg-amber-600 hover:bg-amber-500 text-white font-bold text-xs px-3 py-2.5 rounded-xl block text-center shadow-md transition">OpenRent ➔</a>
-                  </div>
+            <div className="space-y-3 max-h-[60vh] overflow-y-auto pr-2 mb-6">
+              <div className="text-center py-5 bg-slate-950 rounded-xl border border-slate-800 space-y-3">
+                <p className="text-slate-400 text-xs px-2">Search top rental portals directly for live listings in {listingsModal.neighborhood}:</p>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 px-4">
+                  <a href={`https://www.zoopla.co.uk/to-rent/property/${encodeURIComponent(listingsModal.neighborhood.replace(/\s+/g, '-').toLowerCase())}/`} target="_blank" rel="noreferrer" className="bg-blue-600 hover:bg-blue-500 text-white font-bold text-xs px-3 py-2.5 rounded-xl block text-center shadow-md transition">Zoopla ➔</a>
+                  <a href={`https://www.openrent.co.uk/properties-to-rent/${encodeURIComponent(listingsModal.neighborhood.replace(/\s+/g, '-').toLowerCase())}-london`} target="_blank" rel="noreferrer" className="bg-amber-600 hover:bg-amber-500 text-white font-bold text-xs px-3 py-2.5 rounded-xl block text-center shadow-md transition">OpenRent ➔</a>
                 </div>
-              )}
+              </div>
             </div>
-            
             <button onClick={() => setListingsModal({ ...listingsModal, isOpen: false })} className="w-full bg-slate-800 hover:bg-slate-700 text-slate-300 font-bold py-3 rounded-xl text-xs transition">Close Window</button>
           </div>
         </div>
@@ -289,11 +302,6 @@ export default function Dashboard({ session }) {
                   </div>
                 </div>
               ))}
-              {chatMessages.length === 1 && !chatLoading && (
-                <div className="flex flex-col gap-2 mt-2">
-                  {BONNIE_QUICK_PROMPTS.map((prompt, i) => <button key={i} onClick={() => sendChatMessage(prompt)} className="bg-slate-800 hover:bg-emerald-900/50 border border-slate-700 text-slate-300 text-left p-2.5 rounded-xl transition text-[10px]">{prompt}</button>)}
-                </div>
-              )}
               {chatLoading && <div className="text-slate-400 text-xs p-3">Bonnie is typing...</div>}
             </div>
             <form onSubmit={(e) => { e.preventDefault(); sendChatMessage(chatInput); }} className="p-3 bg-slate-950 border-t border-slate-800 flex gap-2">
@@ -304,13 +312,42 @@ export default function Dashboard({ session }) {
         )}
       </div>
 
+      {/* ENTERPRISE BATCH SUITE (ONLY FOR BUSINESS WORKSPACE) */}
+      {workspace === 'business' && showSearchForm && (
+        <div className="w-full max-w-2xl mx-auto mb-8 bg-slate-900 border border-blue-500/30 p-6 rounded-3xl shadow-2xl animate-fadeIn">
+          <div className="flex items-center gap-3 mb-4">
+            <span className="text-2xl">🏢</span>
+            <div>
+              <h3 className="text-lg font-bold text-white">Enterprise Batch Relocation</h3>
+              <p className="text-xs text-slate-400">Upload new hire spreadsheets. Clyde will email each of them a custom relocation guide.</p>
+            </div>
+          </div>
+          {!batchProgress.active ? (
+            <div className="flex flex-col sm:flex-row gap-3">
+              <button onClick={downloadTemplate} className="flex-1 bg-slate-800 hover:bg-slate-700 text-blue-400 font-bold py-3 rounded-xl border border-slate-700 text-xs transition">1. Download Template</button>
+              <div className="flex-1 relative">
+                <input type="file" accept=".xlsx, .xls" onChange={handleFileUpload} className="absolute inset-0 w-full h-full opacity-0 cursor-pointer" />
+                <button className="w-full bg-blue-600 hover:bg-blue-500 text-white font-bold py-3 rounded-xl text-xs transition shadow-lg">2. Upload & Dispatch</button>
+              </div>
+            </div>
+          ) : (
+            <div className="bg-slate-950 p-4 rounded-xl border border-blue-500/50">
+              <p className="text-blue-400 text-xs font-bold mb-2">Processing: {batchProgress.currentName} ({batchProgress.current} of {batchProgress.total})</p>
+              <div className="w-full bg-slate-800 h-2 rounded-full overflow-hidden">
+                <div className="bg-blue-500 h-2 transition-all" style={{ width: `${(batchProgress.current / batchProgress.total) * 100}%` }}></div>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
       {/* SEARCH FORM */}
       {showSearchForm && (
-        <div className="flex-1 flex justify-center items-center animate-fadeIn pb-12 mt-8">
+        <div className="flex-1 flex justify-center items-center animate-fadeIn pb-12 mt-4">
           <div className="w-full max-w-2xl glass p-6 sm:p-10 rounded-3xl shadow-2xl border border-emerald-900/30">
             <div className="text-center mb-8">
-              <h2 className="text-2xl sm:text-3xl font-black text-white mb-2">Smart Relocation Assistant</h2>
-              <p className="text-slate-400 text-sm">Tell Clyde your budget and office location, and he'll compute the exact neighborhoods where you can actually afford to live.</p>
+              <h2 className="text-2xl sm:text-3xl font-black text-white mb-2">Find Your London Commute Sweet Spot</h2>
+              <p className="text-slate-400 text-sm">Tell Clyde your budget and office location, and he'll compute optimal neighborhoods.</p>
             </div>
 
             <div className="flex bg-slate-900 p-1.5 rounded-xl border border-slate-800 mb-6">
@@ -358,7 +395,6 @@ export default function Dashboard({ session }) {
                   </div>
                 </div>
 
-                {/* EXPAT CREDIT TOGGLE */}
                 <div className="border-t border-slate-800 pt-5">
                   <label className="block text-[10px] sm:text-xs font-bold text-slate-300 uppercase mb-2">Do you have a UK Credit History or UK Guarantor?</label>
                   <select value={hasUKCredit ? "yes" : "no"} onChange={(e) => setHasUKCredit(e.target.value === "yes")} className="w-full bg-slate-900 border border-slate-700 rounded-xl px-4 py-3 text-white text-sm outline-none">
@@ -371,8 +407,7 @@ export default function Dashboard({ session }) {
               </form>
             ) : (
               <form onSubmit={handleAiSubmit} className="space-y-4">
-                <textarea value={aiPromptText} onChange={(e) => setAiPromptText(e.target.value)} placeholder="e.g., I work in Canary Wharf 3 days a week, earn £65k, want a 1-bed flat..." className="w-full h-40 bg-slate-900 border border-slate-700 rounded-xl p-4 text-white text-sm outline-none resize-none focus:border-emerald-500" />
-                
+                <textarea value={aiPromptText} onChange={(e) => setAiPromptText(e.target.value)} placeholder="e.g., I work in Canary Wharf 3 days a week, earn £65k..." className="w-full h-40 bg-slate-900 border border-slate-700 rounded-xl p-4 text-white text-sm outline-none resize-none focus:border-emerald-500" />
                 <div>
                   <label className="block text-[10px] font-bold text-slate-400 uppercase mb-2">UK Credit History / Guarantor?</label>
                   <select value={hasUKCredit ? "yes" : "no"} onChange={(e) => setHasUKCredit(e.target.value === "yes")} className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-3 text-white text-sm outline-none">
@@ -380,7 +415,6 @@ export default function Dashboard({ session }) {
                     <option value="no">No, I am relocating from abroad</option>
                   </select>
                 </div>
-
                 <button type="submit" className="w-full bg-emerald-600 hover:bg-emerald-500 text-white font-bold py-4 rounded-xl shadow-xl text-sm transition">✨ Ask Clyde</button>
               </form>
             )}
@@ -388,7 +422,7 @@ export default function Dashboard({ session }) {
         </div>
       )}
 
-      {/* REFRESHED LOADING SCREEN */}
+      {/* LOADING SCREEN */}
       {loading && !showSearchForm && (
         <div className="flex-1 flex items-center justify-center animate-fadeIn py-20">
           <div className="glass rounded-3xl py-16 px-10 text-center border border-emerald-500/30 max-w-lg w-full shadow-2xl">
@@ -407,14 +441,12 @@ export default function Dashboard({ session }) {
               <span className="block text-[10px] text-slate-400 uppercase font-bold">Target Destination</span>
               <strong className="text-white text-sm sm:text-base">{activeDestination}</strong>
             </div>
-            <button onClick={() => setShowSearchForm(true)} className="bg-slate-800 hover:bg-slate-700 border border-slate-600 text-white text-xs font-bold py-2 px-4 rounded-lg transition">
-              ⚙️ Modify Search
-            </button>
+            <button onClick={() => setShowSearchForm(true)} className="bg-slate-800 hover:bg-slate-700 border border-slate-600 text-white text-xs font-bold py-2 px-4 rounded-lg transition">⚙️ Modify Search</button>
           </div>
 
           {errorMsg && <div className="p-6 glass rounded-2xl border border-red-900/50 text-amber-400 text-center text-sm">{errorMsg}</div>}
 
-          {/* RELOCATION MASTER CHECKLIST */}
+          {/* MASTER CHECKLIST */}
           <div className="bg-slate-900 border-l-4 border-emerald-500 rounded-r-2xl shadow-xl overflow-hidden">
             <div className="flex justify-between items-center p-5 cursor-pointer hover:bg-slate-800/50 transition" onClick={() => setIsChecklistOpen(!isChecklistOpen)}>
               <div className="flex items-center gap-3">
@@ -423,25 +455,11 @@ export default function Dashboard({ session }) {
               </div>
               <span className="text-emerald-400 font-bold text-xs">{isChecklistOpen ? '▲ Close' : '▼ Expand'}</span>
             </div>
-            
             {isChecklistOpen && (
               <div className="px-5 pb-6 text-sm text-slate-300 space-y-5 border-t border-slate-800 pt-4">
-                <div>
-                  <strong className="text-emerald-400 block mb-1">1. Right to Rent & Visas</strong>
-                  <p>UK landlords are legally required to verify your visa. You must generate a "Share Code" from the Gov.uk website before viewing properties. Do not pay any holding fees via wire transfer.</p>
-                </div>
-                <div>
-                  <strong className="text-emerald-400 block mb-1">2. Council Tax Bands</strong>
-                  <p>Council Tax is a mandatory monthly municipal bill. It varies drastically by Borough (e.g. Wandsworth is very cheap, Kingston is expensive). Properties are graded Band A (Cheapest) to H (Most Expensive). Expect to pay roughly £80 - £150/mo depending on the Borough and Band.</p>
-                </div>
-                <div>
-                  <strong className="text-emerald-400 block mb-1">3. Setting up a UK Bank</strong>
-                  <p>Traditional banks (HSBC, Barclays) require strict proof of address (utility bills). When you first land, immediately download <strong>Monzo, Revolut, or Starling</strong> which only require your BRP and passport to open an account.</p>
-                </div>
-                <div>
-                  <strong className="text-emerald-400 block mb-1">4. Healthcare (NHS Registration)</strong>
-                  <p>Once you have a tenancy agreement, go to the NHS website to find your nearest GP Surgery. Registration is free and essential for receiving standard healthcare.</p>
-                </div>
+                <div><strong className="text-emerald-400 block mb-1">1. Right to Rent & Visas</strong><p>UK landlords legally verify your visa. Generate a "Share Code" from Gov.uk beforehand.</p></div>
+                <div><strong className="text-emerald-400 block mb-1">2. Council Tax Bands</strong><p>Municipal tax varying by Borough. Expect roughly £80 - £150/mo depending on the property band.</p></div>
+                <div><strong className="text-emerald-400 block mb-1">3. UK Bank Accounts</strong><p>Use Monzo, Revolut, or Starling initially since high street banks require proof of address.</p></div>
               </div>
             )}
           </div>
@@ -453,24 +471,11 @@ export default function Dashboard({ session }) {
             const singleFare = parseFloat(singleFareStr) || 0;
             const monthlyFareTotal = Math.round(singleFare * 2 * daysNum * 4.33);
             
-            // AVERAGE RENT CALCULATION MATH
             let avgRent = 1500;
             if (hub.Rent_Lower_Bound && hub.Rent_Upper_Bound) {
               avgRent = Math.round((Number(hub.Rent_Lower_Bound) + Number(hub.Rent_Upper_Bound)) / 2);
-            } else {
-              const matches = String(hub.Rent_Range).match(/\d[\d,.]*/g);
-              if (matches && matches.length >= 2) {
-                const minR = parseFloat(matches[0].replace(/,/g, ''));
-                const maxR = parseFloat(matches[1].replace(/,/g, ''));
-                if (!isNaN(minR) && !isNaN(maxR)) avgRent = Math.round((minR + maxR) / 2);
-              } else if (matches && matches.length === 1) {
-                avgRent = parseFloat(matches[0].replace(/,/g, ''));
-              }
             }
-
             const fiveWeekDeposit = Math.round((avgRent * 12) / 52 * 5);
-            
-            // DYNAMIC UPFRONT CASH LOGIC
             let upfrontCash = avgRent + fiveWeekDeposit;
             if (!isUKCreditActive) upfrontCash = (avgRent * 6) + fiveWeekDeposit;
 
@@ -479,9 +484,7 @@ export default function Dashboard({ session }) {
             return (
               <div key={idx} className="glass rounded-3xl p-5 sm:p-6 md:p-8 shadow-2xl border border-slate-700/40 hover:border-emerald-500/40 transition">
                 <div className="flex justify-between items-start mb-4">
-                  <div>
-                    <h3 className="text-xl sm:text-2xl font-black text-white">{hub.Neighborhood} <span className="text-xs sm:text-sm font-normal text-slate-400">({hub.Station_Outcode})</span></h3>
-                  </div>
+                  <div><h3 className="text-xl sm:text-2xl font-black text-white">{hub.Neighborhood} <span className="text-xs font-normal text-slate-400">({hub.Station_Outcode})</span></h3></div>
                   <div className="bg-slate-950 border border-emerald-500/30 rounded-xl px-4 py-2 text-center ml-2">
                     <span className="block text-[9px] text-slate-400 uppercase font-bold">Match Score</span>
                     <span className="text-xl font-black text-emerald-400">{hub.Suggestion_Score}</span>
@@ -490,100 +493,41 @@ export default function Dashboard({ session }) {
 
                 <NeighborhoodMap lat={hub.Latitude} lng={hub.Longitude} neighborhood={hub.Neighborhood} targetDestination={activeDestination} />
 
-                {/* METRICS GRID WITH INFO BUTTONS */}
                 <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-5">
                   <div className="bg-slate-950 p-3.5 rounded-xl border border-slate-800 relative">
-                    <div className="flex justify-between items-center mb-0.5">
-                      <span className="text-[10px] text-slate-400 uppercase font-bold">Rent Allocation</span>
-                      <button onClick={() => toggleTooltip(`rent-${idx}`)} className="text-slate-500 hover:text-white">ⓘ</button>
-                    </div>
+                    <div className="flex justify-between items-center mb-0.5"><span className="text-[10px] text-slate-400 uppercase font-bold">Rent Allocation</span><button onClick={() => toggleTooltip(`rent-${idx}`)} className="text-slate-500 hover:text-white">ⓘ</button></div>
                     <span className="text-emerald-400 font-bold text-sm block">{hub.Rent_Range}</span>
-                    {activeTooltip === `rent-${idx}` && (
-                      <div className="absolute top-full left-0 mt-2 w-48 bg-slate-800 border border-emerald-500 p-3 rounded-xl text-xs z-50 text-slate-200 shadow-2xl">
-                        <strong>Assumed by:</strong> Real 2026 active rental listings for the selected property type in this postcode.
-                      </div>
-                    )}
                   </div>
-
                   <div className="bg-slate-950 p-3.5 rounded-xl border border-slate-800 relative">
-                    <div className="flex justify-between items-center mb-0.5">
-                      <span className="text-[10px] text-slate-400 uppercase font-bold">Commute</span>
-                      <button onClick={() => toggleTooltip(`commute-${idx}`)} className="text-slate-500 hover:text-white">ⓘ</button>
-                    </div>
+                    <div className="flex justify-between items-center mb-0.5"><span className="text-[10px] text-slate-400 uppercase font-bold">Commute</span><button onClick={() => toggleTooltip(`commute-${idx}`)} className="text-slate-500 hover:text-white">ⓘ</button></div>
                     <span className="text-white font-bold text-sm block">{hub.Commute_Duration} Mins</span>
-                    {activeTooltip === `commute-${idx}` && (
-                      <div className="absolute top-full left-0 mt-2 w-48 bg-slate-800 border border-emerald-500 p-3 rounded-xl text-xs z-50 text-slate-200 shadow-2xl">
-                        <strong>Route:</strong> {hub.Journey_Breakdown}
-                      </div>
-                    )}
                   </div>
-
                   <div className="bg-slate-950 p-3.5 rounded-xl border border-slate-800 relative">
-                    <div className="flex justify-between items-center mb-0.5">
-                      <span className="text-[10px] text-slate-400 uppercase font-bold">TfL Cost / Mo</span>
-                      <button onClick={() => toggleTooltip(`tfl-${idx}`)} className="text-slate-500 hover:text-white">ⓘ</button>
-                    </div>
+                    <div className="flex justify-between items-center mb-0.5"><span className="text-[10px] text-slate-400 uppercase font-bold">TfL Cost / Mo</span><button onClick={() => toggleTooltip(`tfl-${idx}`)} className="text-slate-500 hover:text-white">ⓘ</button></div>
                     <span className="text-blue-400 font-bold text-sm block">£{monthlyFareTotal}</span>
-                    {activeTooltip === `tfl-${idx}` && (
-                      <div className="absolute top-full right-0 lg:left-0 mt-2 w-56 bg-slate-800 border border-blue-500 p-3 rounded-xl text-xs z-50 text-slate-200 shadow-2xl">
-                        <strong>Fare Breakdown:</strong> £{singleFare.toFixed(2)} (Peak Single) × 2 (Return) × {searchParams.get('days')} days × 4.33 weeks = £{monthlyFareTotal}/mo.
-                      </div>
-                    )}
                   </div>
-
                   <div className="bg-slate-950 p-3.5 rounded-xl border border-slate-800 relative">
-                    <div className="flex justify-between items-center mb-0.5">
-                      <span className="text-[10px] text-slate-400 uppercase font-bold">Safety Score</span>
-                      <button onClick={() => toggleTooltip(`safety-${idx}`)} className="text-slate-500 hover:text-white">ⓘ</button>
-                    </div>
+                    <div className="flex justify-between items-center mb-0.5"><span className="text-[10px] text-slate-400 uppercase font-bold">Safety Score</span><button onClick={() => toggleTooltip(`safety-${idx}`)} className="text-slate-500 hover:text-white">ⓘ</button></div>
                     <span className="text-amber-400 font-bold text-sm block">{hub.Safety_Score}/100</span>
-                    {activeTooltip === `safety-${idx}` && (
-                      <div className="absolute top-full right-0 mt-2 w-48 bg-slate-800 border border-amber-500 p-3 rounded-xl text-xs z-50 text-slate-200 shadow-2xl">
-                        <strong>Sourced from:</strong> Metropolitan Police 12-month borough crime density reports.
-                      </div>
-                    )}
                   </div>
                 </div>
 
-                {/* EXPANDED DETAILS */}
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-5">
                   <div className="bg-slate-900/60 p-4 rounded-xl border border-slate-800/80">
                     <h4 className="text-[10px] font-bold text-blue-400 uppercase tracking-widest mb-3">📸 Local Lifestyle Profile</h4>
                     <ul className="space-y-3 text-xs text-slate-300">
-                      <li><strong className="text-slate-100 block mb-0.5">🎭 Vibe & Community:</strong> {hub.Vibe}</li>
+                      <li><strong className="text-slate-100 block mb-0.5">🎭 Vibe:</strong> {hub.Vibe}</li>
                       <li><strong className="text-slate-100 block mb-0.5">📍 Famous Spots:</strong> <span className="text-emerald-400 font-medium">{hub.Famous_Spots}</span></li>
-                      <li><strong className="text-slate-100 block mb-0.5">✈️ Connectivity:</strong> {hub.Connectivity}</li>
                       <li><strong className="text-slate-100 block mb-0.5">🛒 Groceries:</strong> {hub.Supermarkets}</li>
                     </ul>
                   </div>
-
                   <div className={`bg-slate-900/60 p-4 rounded-xl border ${!isUKCreditActive ? 'border-amber-500/50' : 'border-slate-800/80'}`}>
                     <h4 className={`text-[10px] font-bold uppercase tracking-widest mb-3 ${!isUKCreditActive ? 'text-amber-500' : 'text-emerald-500'}`}>💷 Upfront Move-In Cash Needed</h4>
                     <div className="space-y-2 text-xs">
-                      
-                      <div className="flex justify-between items-center text-slate-400">
-                        <span className="flex items-center gap-1">{!isUKCreditActive ? '6 Months Rent (Avg)' : '1st Month Rent (Avg)'} <button onClick={() => toggleTooltip(`rentwarn-${idx}`)} className="text-slate-500 hover:text-white">ⓘ</button></span> 
-                        <span className="text-white">£{!isUKCreditActive ? (avgRent * 6).toLocaleString() : avgRent.toLocaleString()}</span>
-                      </div>
-                      {activeTooltip === `rentwarn-${idx}` && (
-                        <div className="bg-slate-800 text-[10px] p-2 rounded-lg text-slate-300 mt-1 mb-2 border border-slate-700">
-                          {!isUKCreditActive ? `Based on 6 months upfront using the average rent (£${avgRent.toLocaleString()}/mo) for this neighborhood.` : `Calculated using the average rent (£${avgRent.toLocaleString()}/mo) for this neighborhood.`}
-                        </div>
-                      )}
-
-                      <div className="flex justify-between items-center text-slate-400">
-                        <span className="flex items-center gap-1">5-Week Deposit <button onClick={() => toggleTooltip(`deposit-${idx}`)} className="text-slate-500 hover:text-white">ⓘ</button></span> 
-                        <span className="text-white">£{fiveWeekDeposit.toLocaleString()}</span>
-                      </div>
-                      {activeTooltip === `deposit-${idx}` && (
-                        <div className="bg-slate-800 text-[10px] p-2 rounded-lg text-slate-300 mt-1 mb-2 border border-slate-700">Calculated as 5 weeks of the average rent (£{avgRent.toLocaleString()}/mo). Capped under the UK Tenant Fees Act.</div>
-                      )}
-                      
+                      <div className="flex justify-between items-center text-slate-400"><span>{!isUKCreditActive ? '6 Months Rent (Avg)' : '1st Month Rent (Avg)'}</span><span className="text-white">£{!isUKCreditActive ? (avgRent * 6).toLocaleString() : avgRent.toLocaleString()}</span></div>
+                      <div className="flex justify-between items-center text-slate-400"><span>5-Week Deposit</span><span className="text-white">£{fiveWeekDeposit.toLocaleString()}</span></div>
                       <div className="h-px bg-slate-800 my-2"></div>
-                      <div className="flex justify-between font-bold text-slate-100 text-sm">
-                        <span>Total Cash Needed:</span> 
-                        <span className={!isUKCreditActive ? "text-amber-400" : "text-emerald-400"}>£{upfrontCash.toLocaleString()}</span>
-                      </div>
+                      <div className="flex justify-between font-bold text-slate-100 text-sm"><span>Total Cash Needed:</span><span className={!isUKCreditActive ? "text-amber-400" : "text-emerald-400"}>£{upfrontCash.toLocaleString()}</span></div>
                     </div>
                   </div>
                 </div>
@@ -593,21 +537,11 @@ export default function Dashboard({ session }) {
                   <p className="font-medium">{hub.AI_Verdict}</p>
                 </div>
 
-                {/* ACTION BUTTONS */}
                 <div className="flex flex-col sm:flex-row gap-2.5 sm:gap-3">
-                  <button onClick={() => handleListingsClick(hub)} className="flex-1 bg-emerald-600 hover:bg-emerald-500 text-white font-bold py-3 px-4 rounded-xl text-xs transition shadow-lg flex items-center justify-center gap-1.5">
-                    <span>🏘️</span> Suggested Listings
-                  </button>
-                  
-                  <button onClick={() => handleSaveSuggestion(hub)} className={`flex-1 ${isSaved ? 'bg-slate-800 text-emerald-400 border border-emerald-500/50' : 'bg-slate-800 hover:bg-slate-700 text-white'} font-bold py-3 px-4 rounded-xl text-xs transition shadow-lg flex items-center justify-center gap-1.5 border border-slate-700`}>
-                    <span>{isSaved ? '✅' : '🔖'}</span> {isSaved ? 'Saved to Profile' : 'Save Suggestion'}
-                  </button>
-                  
-                  <a href={`https://www.google.com/maps/dir/?api=1&origin=${hub.Latitude},${hub.Longitude}&destination=${encodeURIComponent(activeDestination)}&travelmode=transit`} target="_blank" rel="noreferrer" className="flex-1 bg-blue-600 hover:bg-blue-500 text-white font-bold py-3 px-4 rounded-xl text-center text-xs transition shadow-lg flex items-center justify-center gap-1.5">
-                    🗺️ Maps Route
-                  </a>
+                  <button onClick={() => handleListingsClick(hub)} className="flex-1 bg-emerald-600 hover:bg-emerald-500 text-white font-bold py-3 px-4 rounded-xl text-xs transition shadow-lg flex items-center justify-center gap-1.5"><span>🏘️</span> Suggested Listings</button>
+                  <button onClick={() => handleSaveSuggestion(hub)} className={`flex-1 ${isSaved ? 'bg-slate-800 text-emerald-400 border border-emerald-500/50' : 'bg-slate-800 hover:bg-slate-700 text-white'} font-bold py-3 px-4 rounded-xl text-xs transition shadow-lg flex items-center justify-center gap-1.5 border border-slate-700`}><span>{isSaved ? '✅' : '🔖'}</span> {isSaved ? 'Saved to Profile' : 'Save Suggestion'}</button>
+                  <a href={`https://www.google.com/maps/dir/?api=1&origin=${hub.Latitude},${hub.Longitude}&destination=${encodeURIComponent(activeDestination)}&travelmode=transit`} target="_blank" rel="noreferrer" className="flex-1 bg-blue-600 hover:bg-blue-500 text-white font-bold py-3 px-4 rounded-xl text-center text-xs transition shadow-lg flex items-center justify-center gap-1.5">🗺️ Maps Route</a>
                 </div>
-
               </div>
             );
           })}
@@ -622,11 +556,8 @@ export default function Dashboard({ session }) {
         </div>
       )}
 
-      {/* DISCLAIMER FOOTER */}
       <footer className="w-full mt-auto mb-2 pt-8 text-center opacity-60">
-        <p className="text-[10px] text-slate-500 max-w-3xl mx-auto px-4">
-          <strong>Disclaimer:</strong> KeelEngine uses AI to calculate transit costs and aggregate property data. AI can occasionally provide outdated market figures. Always conduct your own research before signing a tenancy agreement.
-        </p>
+        <p className="text-[10px] text-slate-500 max-w-3xl mx-auto px-4"><strong>Disclaimer:</strong> KeelEngine uses AI to calculate transit costs and aggregate property data. Always conduct your own research before signing a lease.</p>
       </footer>
     </div>
   );
