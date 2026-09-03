@@ -218,7 +218,7 @@ export default function Dashboard({ session }) {
         <div className="flex-1 flex justify-center items-center animate-fadeIn pb-12 mt-8">
           <div className="w-full max-w-2xl glass p-6 sm:p-10 rounded-3xl shadow-2xl border border-emerald-900/30">
             <div className="text-center mb-8">
-              <h2 className="text-2xl sm:text-3xl font-black text-white mb-2">Find Your London Commute Sweet Spot</h2>
+              <h2 className="text-2xl sm:text-3xl font-black text-white mb-2">Smart Relocation Agent</h2>
               <p className="text-slate-400 text-sm">Tell Clyde your budget and office location, and he'll compute the exact neighborhoods where you can actually afford to live.</p>
             </div>
 
