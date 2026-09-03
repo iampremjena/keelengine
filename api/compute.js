@@ -1,83 +1,102 @@
 import OpenAI from 'openai';
 
-export default async function handler(req, res) {
-  // CORS Headers
-  res.setHeader('Access-Control-Allow-Credentials', 'true');
-  res.setHeader('Access-Control-Allow-Origin', '*');
-  res.setHeader('Access-Control-Allow-Methods', 'GET,OPTIONS,PATCH,DELETE,POST,PUT');
-  res.setHeader('Access-Control-Allow-Headers', 'X-CSRF-Token, X-Requested-With, Accept, Accept-Version, Content-Length, Content-MD5, Content-Type, Date, X-Api-Version');
+// 2026 London Market Baseline Tiers
+const PROPERTY_TIERS = [
+  { type: 'Shared Flatshare / Room', minBudget: 750 },
+  { type: 'Studio Flat', minBudget: 1200 },
+  { type: '1-Bed Private Flat', minBudget: 1450 },
+  { type: '2-Bed Flat', minBudget: 1800 }
+];
 
-  if (req.method === 'OPTIONS') return res.status(200).end();
-  if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
+export default async function handler(req, res) {
+  if (req.method !== 'POST') {
+    return res.status(405).json({ error: 'Method not allowed' });
+  }
 
   try {
-    const { postcode, days_per_week = 3, property_type = "1-Bed Private Flat", total_budget = 1800 } = req.body || {};
+    const { destination, days_per_week = 3, property_type = '1-Bed Private Flat', total_budget = 1500 } = req.body;
+    const numericBudget = Number(total_budget);
 
-    if (!postcode) return res.status(400).json({ error: 'Office postcode is required.' });
-
-    const apiKey = process.env.OPENAI_API_KEY;
-    if (!apiKey) {
-      return res.status(500).json({ error: "OPENAI_API_KEY is not configured in Vercel settings." });
+    const absoluteMin = PROPERTY_TIERS[0].minBudget;
+    if (numericBudget < absoluteMin) {
+      return res.status(200).json({
+        error: `There are no suitable accommodation options in London for a budget of £${numericBudget.toLocaleString()}/mo. The current absolute minimum for shared accommodation starts around £${absoluteMin}/mo.`
+      });
     }
 
-    const openai = new OpenAI({ apiKey });
+    const currentTier = PROPERTY_TIERS.find(t => t.type === property_type) || PROPERTY_TIERS[2];
+    
+    if (numericBudget < currentTier.minBudget) {
+      const suitableTier = [...PROPERTY_TIERS].reverse().find(t => numericBudget >= t.minBudget);
+      if (suitableTier && suitableTier.type !== property_type) {
+        return res.status(200).json({
+          budget_insufficient: true,
+          requested_type: property_type,
+          suggested_type: suitableTier.type,
+          user_budget: numericBudget,
+          message: `Your budget of £${numericBudget.toLocaleString()}/mo is below the current London baseline for a ${property_type} (which starts around £${currentTier.minBudget}/mo). Would you like to view ${suitableTier.type} options instead?`
+        });
+      }
+    }
+
+    const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
     const prompt = `
-      You are KeelEngine, an enterprise London real estate AI engine.
-      The user works near London postcode '${postcode}' and commutes ${days_per_week} days/week.
-      Property type: '${property_type}'. Maximum total monthly outgoings (Rent + TfL travel): £${total_budget}.
-      
-      Identify 4 realistic London neighborhoods suitable for this commuter. 
-      Return STRICTLY a JSON object with a key "hubs" containing an array of 4 objects with keys:
-      "Neighborhood", "Station_Outcode", "Borough", "Rent_Range", "Commute_Duration" (number), "Line_Route", "Single_Fare_Cost" (number), "Council_Tax_Band_D_Base" (number), "Nearest_Grocery", "Nearest_Pub", "Safety_Score" (number), "Suggestion_Score" (number), "AI_Verdict".
+    You are Clyde, KeelEngine's advanced Enterprise London relocation AI agent.
+    Generate exactly 10 realistic London neighborhood hubs for a tenant commuting to: '${destination}'.
+    
+    STRICT FINANCIAL & SPATIAL ENGINE RULES (Year: 2026):
+    - Maximum Combined Budget (Rent + Peak TfL Commute): £${numericBudget}/month.
+    - Property Type Requested: '${property_type}'.
+    - Office Days: ${days_per_week} days/week.
+    
+    DYNAMIC ACCURACY INSTRUCTIONS:
+    - Single_Fare_Cost: MUST be a pure number (e.g. 3.60). Use real 2026 Peak Fares to Zone 1: Z2=3.60, Z3=3.90, Z4=4.80, Z5=5.30, Z6=5.90.
+    - Rent Bounds: Provide Rent_Lower_Bound (e.g. 1400) and Rent_Upper_Bound (e.g. 1600) strictly <= £${numericBudget}.
+    - Vibe: Describe the demographics (e.g. "Popular with Australian expats and young finance professionals. Vibrant and busy.")
+    - Connectivity: Name airport links or major cycling/transit perks (e.g. "Direct Thameslink to Gatwick; Cycleway 3 to City.")
+
+    Return ONLY a JSON object with this exact schema:
+    {
+      "hubs": [
+        {
+          "Neighborhood": "String",
+          "Station_Outcode": "String",
+          "Borough": "String",
+          "Latitude": Number,
+          "Longitude": Number,
+          "Commute_Duration": Number,
+          "Single_Fare_Cost": Number,
+          "Journey_Breakdown": "String (e.g. Northern Line direct 22 mins)",
+          "Rent_Range": "String (e.g. £1,400 - £1,600/mo)",
+          "Rent_Lower_Bound": Number (e.g. 1400),
+          "Rent_Upper_Bound": Number (e.g. 1600),
+          "Council_Tax_Estimate": Number,
+          "Safety_Score": Number (1-100),
+          "Suggestion_Score": Number (1-100),
+          "Vibe": "String (Demographics and neighborhood feel)",
+          "Connectivity": "String (Airport access and cycling options)",
+          "Famous_Spots": "String (Name 2-3 specific Instagram-viral food markets, famous restaurants, or iconic spots)",
+          "Supermarkets": "String (E.g. Large Waitrose, Aldi, and local Sainsbury's)",
+          "AI_Verdict": "String (A single, punchy line describing the neighborhood's essence for this user)"
+        }
+      ]
+    }
     `;
 
-    // Fast completion using standard json_object
-    const completion = await openai.chat.completions.create({
+    const response = await openai.chat.completions.create({
       model: 'gpt-4o-mini',
-      messages: [
-        { role: 'system', content: 'You are KeelEngine AI. Return strictly valid JSON.' },
-        { role: 'user', content: prompt }
-      ],
+      messages: [{ role: 'system', content: prompt }],
       response_format: { type: "json_object" }
     });
 
-    const parsed = JSON.parse(completion.choices[0].message.content || '{"hubs":[]}');
+    const parsed = JSON.parse(response.choices[0].message.content);
+    const hubs = parsed.hubs || parsed.neighborhoods || parsed.results || (Array.isArray(parsed) ? parsed : []);
 
-    // Fast Parallel Tavily Scraping with short 2s timeout
-    const tavilyKey = process.env.TAVILY_API_KEY;
-    if (tavilyKey && parsed.hubs && parsed.hubs.length > 0) {
-      await Promise.allSettled(
-        parsed.hubs.map(async (hub) => {
-          try {
-            const controller = new AbortController();
-            const timeoutId = setTimeout(() => controller.abort(), 2500);
+    return res.status(200).json({ hubs });
 
-            const tavRes = await fetch('https://api.tavily.com/search', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              signal: controller.signal,
-              body: JSON.stringify({
-                api_key: tavilyKey,
-                query: `site:rightmove.co.uk OR site:zoopla.co.uk property to rent in ${hub.Neighborhood} ${hub.Station_Outcode}`,
-                search_depth: "basic",
-                max_results: 2
-              })
-            });
-            clearTimeout(timeoutId);
-            const tavData = await tavRes.json();
-            hub.live_listings = (tavData.results || []).map(r => ({ title: r.title, url: r.url }));
-          } catch (e) {
-            hub.live_listings = [];
-          }
-        })
-      );
-    }
-
-    return res.status(200).json(parsed);
-
-  } catch (err) {
-    console.error("Vercel Runtime Exception:", err);
-    return res.status(500).json({ error: `Runtime Exception: ${err.message}` });
+  } catch (error) {
+    console.error("Compute Error:", error);
+    return res.status(500).json({ error: "Clyde encountered an error analyzing the market topology. Please try again." });
   }
 }
