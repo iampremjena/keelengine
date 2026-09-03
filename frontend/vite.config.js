@@ -4,9 +4,35 @@ import react from '@vitejs/plugin-react';
 export default defineConfig({
   plugins: [react()],
   build: {
-    rollupOptions: {
-      // Exclude backend-only modules from being bundled into the frontend
-      external: ['resend', 'openai', 'fs', 'path'],
+    rolldownOptions: {
+      external: [
+        'resend',
+        'openai',
+        'fs',
+        'path',
+        'os',
+        'crypto',
+        'http',
+        'https',
+        'stream',
+        'zlib',
+        'child_process'
+      ]
     },
-  },
+    rollupOptions: {
+      external: [
+        'resend',
+        'openai',
+        'fs',
+        'path',
+        'os',
+        'crypto',
+        'http',
+        'https',
+        'stream',
+        'zlib',
+        'child_process'
+      ]
+    }
+  }
 });
