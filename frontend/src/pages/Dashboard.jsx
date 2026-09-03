@@ -42,7 +42,7 @@ function NeighborhoodMap({ lat, lng, neighborhood, targetDestination }) {
   );
 }
 
-export default function Dashboard({ session, profile, workspace }) {
+export default function Dashboard({ session, workspace }) {
   const [searchParams, setSearchParams] = useSearchParams();
   const hasSearched = searchParams.has('destination');
   const [showSearchForm, setShowSearchForm] = useState(!hasSearched);
@@ -80,21 +80,23 @@ export default function Dashboard({ session, profile, workspace }) {
   const [alertConfig, setAlertConfig] = useState({ isOpen: false, title: '', message: '', type: 'success' });
   const [budgetFallback, setBudgetFallback] = useState({ isOpen: false, message: '', suggestedType: '', userBudget: 0 });
 
-  // BONNIE
+  // BONNIE & VOICE STATES
   const [isBonnieOpen, setIsBonnieOpen] = useState(false);
   const [chatMessages, setChatMessages] = useState([{ role: 'assistant', content: "Hi! I'm Bonnie 👋 Need help with visas, Monzo accounts, or TfL costs? I'm your relocation expert. How can I help?" }]);
   const [chatInput, setChatInput] = useState('');
   const [chatLoading, setChatLoading] = useState(false);
   const chatScrollRef = useRef(null);
 
+  const [isListening, setIsListening] = useState(false);
+  const [isSpeaking, setIsSpeaking] = useState(false);
+  const audioRef = useRef(null);
+
   const showAlert = (title, message, type) => setAlertConfig({ isOpen: true, title, message, type });
   const toggleTooltip = (id) => setActiveTooltip(activeTooltip === id ? null : id);
 
   // FETCH SAVED NEIGHBORHOODS
   useEffect(() => {
-    if (session?.user?.id) {
-      fetchSavedSuggestions();
-    }
+    if (session?.user?.id) fetchSavedSuggestions();
   }, [session]);
 
   const fetchSavedSuggestions = async () => {
@@ -107,7 +109,9 @@ export default function Dashboard({ session, profile, workspace }) {
   };
 
   const handleSaveSuggestion = async (hub) => {
-    if (!session) return showAlert("Account Required", "Please sign in or create an account to save suggestions.", "error");
+    if (!session || session.user.email.includes('@keelengine.temp')) {
+      return showAlert("Account Required", "Please create a permanent account to save suggestions.", "error");
+    }
     if (savedNeighborhoods.includes(hub.Neighborhood)) return showAlert("Already Saved", `${hub.Neighborhood} is already saved.`, "info");
 
     try {
@@ -128,11 +132,89 @@ export default function Dashboard({ session, profile, workspace }) {
     }
   };
 
-  const handleListingsClick = (hub) => {
-    setListingsModal({ isOpen: true, neighborhood: hub.Neighborhood, listings: hub.live_listings || [] });
+  // --- TTS VOICE ENGINE ---
+  const playTTS = async (text) => {
+    setIsSpeaking(true);
+    try {
+      const cleanText = text.replace(/<[^>]*>?/gm, ''); // Strip HTML tags
+      const res = await fetch('/api/tts', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ text: cleanText })
+      });
+      if (!res.ok) throw new Error('TTS failed');
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const audio = new Audio(url);
+      audioRef.current = audio;
+      audio.onended = () => setIsSpeaking(false);
+      audio.play();
+    } catch (e) {
+      console.error(e);
+      setIsSpeaking(false);
+    }
   };
 
-  // BATCH TEMPLATE & UPLOAD
+  const stopSpeaking = () => {
+    if (audioRef.current) {
+      audioRef.current.pause();
+      audioRef.current.currentTime = 0;
+    }
+    setIsSpeaking(false);
+  };
+
+  // --- MICROPHONE CAPTURE ---
+  const handleVoiceInput = () => {
+    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+    if (!SpeechRecognition) return showAlert("Not Supported", "Speech recognition is not supported in this browser. Please try Chrome or Safari.", "error");
+
+    const recognition = new SpeechRecognition();
+    recognition.lang = 'en-GB';
+    recognition.interimResults = false;
+
+    recognition.onstart = () => setIsListening(true);
+    recognition.onend = () => setIsListening(false);
+    recognition.onerror = () => setIsListening(false);
+
+    recognition.onresult = async (event) => {
+      const transcript = event.results[0][0].transcript;
+      setChatInput(transcript);
+      if (!isBonnieOpen) setIsBonnieOpen(true);
+      await sendChatMessageAndSpeak(transcript);
+    };
+
+    recognition.start();
+  };
+
+  const sendChatMessageAndSpeak = async (msgText) => {
+    if (!msgText.trim() || chatLoading) return;
+    const updatedMessages = [...chatMessages, { role: 'user', content: msgText.trim() }];
+    setChatMessages(updatedMessages); 
+    setChatInput(''); 
+    setChatLoading(true);
+    
+    try {
+      const res = await fetch('/api/chat', { 
+        method: 'POST', 
+        headers: { 'Content-Type': 'application/json' }, 
+        body: JSON.stringify({ messages: updatedMessages }) 
+      });
+      const data = await res.json();
+      if (data.reply) {
+        setChatMessages([...updatedMessages, { role: 'assistant', content: data.reply }]);
+        await playTTS(data.reply);
+      }
+    } catch (err) { 
+      setChatMessages([...updatedMessages, { role: 'assistant', content: "Connection issue." }]); 
+    } finally { 
+      setChatLoading(false); 
+    }
+  };
+
+  useEffect(() => { if (chatScrollRef.current) chatScrollRef.current.scrollTop = chatScrollRef.current.scrollHeight; }, [chatMessages, isBonnieOpen]);
+
+
+  // BATCH TEMPLATE & UPLOAD (BUSINESS)
   const downloadTemplate = () => {
     const ws = XLSX.utils.aoa_to_sheet([
       ["Employee Name", "Office Location", "Post Code", "Preferences", "Salary", "Employee Email", "Watcher Email"],
@@ -175,6 +257,7 @@ export default function Dashboard({ session, profile, workspace }) {
     reader.readAsBinaryString(file);
   };
 
+  // SEARCH FORMS
   const handleLocationType = (e) => {
     const val = e.target.value;
     setOfficeLocation(val);
@@ -214,6 +297,7 @@ export default function Dashboard({ session, profile, workspace }) {
     setSearchParams({ destination: matchedArea, move: moveType, salary: grossSalary, partner: partnerSalary, budget: budgetSlider, days: officeDays, type: propertyType, credit: hasUKCredit });
   };
 
+  // FETCHING RESULTS
   useEffect(() => {
     const targetDest = searchParams.get('destination');
     if (!targetDest) return;
@@ -239,19 +323,6 @@ export default function Dashboard({ session, profile, workspace }) {
     };
     runCompute();
   }, [searchParams]);
-
-  const sendChatMessage = async (msgText) => {
-    if (!msgText.trim() || chatLoading) return;
-    const updatedMessages = [...chatMessages, { role: 'user', content: msgText.trim() }];
-    setChatMessages(updatedMessages); setChatInput(''); setChatLoading(true);
-    try {
-      const res = await fetch('/api/chat', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ messages: updatedMessages }) });
-      const data = await res.json();
-      if (data.reply) setChatMessages([...updatedMessages, { role: 'assistant', content: data.reply }]);
-    } catch (err) { setChatMessages([...updatedMessages, { role: 'assistant', content: "Connection issue." }]); } finally { setChatLoading(false); }
-  };
-
-  useEffect(() => { if (chatScrollRef.current) chatScrollRef.current.scrollTop = chatScrollRef.current.scrollHeight; }, [chatMessages, isBonnieOpen]);
 
   const activeDestination = searchParams.get('destination') || officeLocation;
   const isUKCreditActive = searchParams.get('credit') !== 'false';
@@ -284,15 +355,33 @@ export default function Dashboard({ session, profile, workspace }) {
         </div>
       )}
 
-      {/* BONNIE CHATBOT */}
-      <div className="fixed bottom-4 right-4 sm:bottom-6 sm:right-6 z-[200]">
+      {/* FLOATING BONNIE CHATBOT WITH VOICE BUTTON & TTS */}
+      <div className="fixed bottom-4 right-4 sm:bottom-6 sm:right-6 z-[200] flex items-center gap-2">
+        <button 
+          onClick={handleVoiceInput}
+          className={`${isListening ? 'bg-red-600 animate-pulse' : 'bg-slate-800 hover:bg-slate-700'} text-white font-bold p-3.5 rounded-full shadow-2xl transition border border-slate-700 text-sm flex items-center justify-center`}
+          title="Talk to Bonnie"
+        >
+          {isListening ? '🎙️ Listening...' : '🎙️'}
+        </button>
+
         {!isBonnieOpen ? (
-          <button onClick={() => setIsBonnieOpen(true)} className="bg-emerald-600 hover:bg-emerald-500 text-white font-bold px-4 py-3 sm:px-5 sm:py-4 rounded-full shadow-2xl transition flex items-center gap-2 border border-emerald-400/40 text-sm"><span>💬 Ask Bonnie</span></button>
+          <button onClick={() => setIsBonnieOpen(true)} className="bg-emerald-600 hover:bg-emerald-500 text-white font-bold px-4 py-3 sm:px-5 sm:py-4 rounded-full shadow-2xl transition flex items-center gap-2 border border-emerald-400/40 text-sm">
+            <span>💬 Ask Bonnie</span>
+          </button>
         ) : (
           <div className="bg-slate-900 border border-emerald-500/40 rounded-3xl shadow-2xl w-[calc(100vw-2rem)] sm:w-96 flex flex-col h-[75vh] max-h-[560px] overflow-hidden animate-fadeIn">
             <div className="bg-slate-950 p-4 border-b border-slate-800 flex justify-between items-center">
-              <div className="flex items-center gap-2"><div className="w-2.5 h-2.5 bg-emerald-400 rounded-full animate-pulse"></div><h4 className="text-white font-bold text-xs sm:text-sm">Bonnie — Relocation Expert</h4></div>
-              <button onClick={() => setIsBonnieOpen(false)} className="text-slate-400 hover:text-white font-bold px-2">✕</button>
+              <div className="flex items-center gap-2">
+                <div className="w-2.5 h-2.5 bg-emerald-400 rounded-full animate-pulse"></div>
+                <h4 className="text-white font-bold text-xs sm:text-sm">Bonnie — Relocation Expert</h4>
+              </div>
+              <div className="flex items-center gap-2">
+                {isSpeaking && (
+                  <button onClick={stopSpeaking} className="text-[10px] text-amber-400 font-bold px-2 py-1 bg-amber-500/10 rounded-lg">🔇 Stop Audio</button>
+                )}
+                <button onClick={() => setIsBonnieOpen(false)} className="text-slate-400 hover:text-white font-bold px-2">✕</button>
+              </div>
             </div>
             <div ref={chatScrollRef} className="flex-1 p-3 sm:p-4 overflow-y-auto space-y-4 text-xs">
               {chatMessages.map((msg, idx) => (
@@ -302,9 +391,14 @@ export default function Dashboard({ session, profile, workspace }) {
                   </div>
                 </div>
               ))}
+              {chatMessages.length === 1 && !chatLoading && (
+                <div className="flex flex-col gap-2 mt-2">
+                  {BONNIE_QUICK_PROMPTS.map((prompt, i) => <button key={i} onClick={() => sendChatMessageAndSpeak(prompt)} className="bg-slate-800 hover:bg-emerald-900/50 border border-slate-700 text-slate-300 text-left p-2.5 rounded-xl transition text-[10px]">{prompt}</button>)}
+                </div>
+              )}
               {chatLoading && <div className="text-slate-400 text-xs p-3">Bonnie is typing...</div>}
             </div>
-            <form onSubmit={(e) => { e.preventDefault(); sendChatMessage(chatInput); }} className="p-3 bg-slate-950 border-t border-slate-800 flex gap-2">
+            <form onSubmit={(e) => { e.preventDefault(); sendChatMessageAndSpeak(chatInput); }} className="p-3 bg-slate-950 border-t border-slate-800 flex gap-2">
               <input type="text" value={chatInput} onChange={(e) => setChatInput(e.target.value)} placeholder="Ask Bonnie..." className="flex-1 bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-white text-xs outline-none focus:border-emerald-500" />
               <button type="submit" disabled={chatLoading} className="bg-emerald-600 text-white font-bold px-3 rounded-xl text-xs">Send</button>
             </form>

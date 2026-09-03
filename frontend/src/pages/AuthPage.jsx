@@ -14,6 +14,7 @@ export default function AuthPage() {
   const [alertConfig, setAlertConfig] = useState({ isOpen: false, title: '', message: '', type: 'success' });
   const showAlert = (title, message, type) => setAlertConfig({ isOpen: true, title, message, type });
 
+  // 1. STANDARD AUTH
   const handleAuth = async (e) => {
     e.preventDefault();
     setLoading(true);
@@ -23,11 +24,9 @@ export default function AuthPage() {
         const { error } = await supabase.auth.signInWithPassword({ email, password });
         if (error) throw error;
       } else {
-        // SIGNUP WORKFLOW
         const { data, error } = await supabase.auth.signUp({ email, password });
         if (error) throw error;
 
-        // Force profile creation with correct account type
         if (data.user) {
           const updates = {
             id: data.user.id,
@@ -50,17 +49,52 @@ export default function AuthPage() {
     }
   };
 
+  // 2. RESTORED: GUEST INSTANT SIGN-IN
+  const handleGuestSignIn = async () => {
+    setLoading(true);
+    try {
+      // Try Supabase Anonymous Sign-In
+      const { error } = await supabase.auth.signInAnonymously();
+      if (error) {
+        // Fallback: If anonymous sign-in is disabled in Supabase, create a temporary guest session
+        const guestEmail = `guest_${Date.now()}@keelengine.temp`;
+        const guestPass = `Guest_${Math.random().toString(36).substring(2, 10)}!`;
+        const { error: signUpErr } = await supabase.auth.signUp({ email: guestEmail, password: guestPass });
+        if (signUpErr) throw signUpErr;
+      }
+    } catch (err) {
+      showAlert("Guest Access Error", err.message, "error");
+    } finally {
+      setLoading(false);
+    }
+  };
+
   return (
     <div className="min-h-screen flex items-center justify-center p-4">
       <AlertModal {...alertConfig} onClose={() => setAlertConfig({ ...alertConfig, isOpen: false })} />
       
       <div className="max-w-md w-full bg-slate-900 border border-slate-800 rounded-3xl p-8 shadow-2xl">
-        <div className="text-center mb-8">
+        <div className="text-center mb-6">
           <h1 className="text-3xl font-black text-white mb-2">KeelEngine</h1>
-          <p className="text-slate-400 text-sm">Log in or create an account</p>
+          <p className="text-slate-400 text-sm">London Relocation & Commute Copilot</p>
         </div>
 
-        {/* TOGGLE ACCOUNTS */}
+        {/* RESTORED: GUEST ACCESS BUTTON */}
+        <button
+          onClick={handleGuestSignIn}
+          disabled={loading}
+          className="w-full bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 font-bold py-3.5 px-4 rounded-2xl border border-emerald-500/30 transition text-xs mb-6 flex items-center justify-center gap-2 shadow-lg"
+        >
+          <span>⚡</span> Continue as Guest (Instant Access)
+        </button>
+
+        <div className="relative flex py-2 items-center mb-6">
+          <div className="flex-grow border-t border-slate-800"></div>
+          <span className="flex-shrink mx-4 text-[10px] text-slate-500 font-bold uppercase tracking-widest">Or Account Login</span>
+          <div className="flex-grow border-t border-slate-800"></div>
+        </div>
+
+        {/* TOGGLE PERSONAL VS BUSINESS */}
         {!isLogin && (
           <div className="flex bg-slate-950 p-1 rounded-xl border border-slate-800 mb-6">
             <button type="button" onClick={() => setAuthType('person')} className={`flex-1 py-2 rounded-lg text-xs font-bold transition ${authType === 'person' ? 'bg-emerald-600 text-white' : 'text-slate-400'}`}>👤 Personal</button>
@@ -76,7 +110,7 @@ export default function AuthPage() {
             </div>
           )}
           <div>
-            <label className="block text-[10px] font-bold text-slate-400 uppercase mb-2">Email</label>
+            <label className="block text-[10px] font-bold text-slate-400 uppercase mb-2">Email Address</label>
             <input type="email" required value={email} onChange={(e) => setEmail(e.target.value)} className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-3 text-white text-sm outline-none focus:border-emerald-500" />
           </div>
           <div>
@@ -84,7 +118,7 @@ export default function AuthPage() {
             <input type="password" required value={password} onChange={(e) => setPassword(e.target.value)} className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-3 text-white text-sm outline-none focus:border-emerald-500" />
           </div>
           <button type="submit" disabled={loading} className={`w-full font-bold py-3.5 rounded-xl text-sm transition ${authType === 'business' && !isLogin ? 'bg-blue-600 hover:bg-blue-500 text-white' : 'bg-emerald-600 hover:bg-emerald-500 text-white'}`}>
-            {loading ? 'Processing...' : (isLogin ? 'Sign In' : (authType === 'business' ? 'Apply for Business Account' : 'Create Account'))}
+            {loading ? 'Processing...' : (isLogin ? 'Sign In' : (authType === 'business' ? 'Apply for Business Account' : 'Create Personal Account'))}
           </button>
         </form>
 
