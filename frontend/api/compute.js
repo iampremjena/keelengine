@@ -48,8 +48,9 @@ export default async function handler(req, res) {
     DETERMINISTIC EVALUATION & ACCURACY INSTRUCTIONS:
     - Single_Fare_Cost: Provide the exact numerical cost of a peak TfL single journey (e.g. 3.60).
     - Journey_Breakdown: Explicitly state the exact train/tube lines and time in minutes (e.g. "Jubilee Line to Waterloo (18 mins)").
-    - Gyms: List key local gyms and fitness centers available in the area (e.g. "PureGym, Gymbox, local council leisure center").
-    - Supermarkets: List major grocery options in the area (e.g. "Sainsbury's Local, Waitrose, M&S Food").
+    - Gyms: List key local gyms and fitness centers available in the area.
+    - Supermarkets: List major grocery options in the area.
+    - Fun_Fact: A fun, niche historical fact or quirky known detail about the neighborhood. Do NOT write a generic verdict.
     - Suggestion_Score: Compute a deterministic score out of 100 weighting short commute duration, low fare cost, safety, and budget margin.
     - SORTING: Sort the final 'hubs' array strictly by 'Suggestion_Score' in descending order (highest score first).
 
@@ -75,7 +76,7 @@ export default async function handler(req, res) {
           "Famous_Spots": "String",
           "Supermarkets": "String",
           "Gyms": "String",
-          "AI_Verdict": "String"
+          "Fun_Fact": "String"
         }
       ]
     }
@@ -85,7 +86,7 @@ export default async function handler(req, res) {
       model: 'gpt-4o-mini',
       messages: [{ role: 'system', content: prompt }],
       response_format: { type: "json_object" },
-      temperature: 0.1 // Low temperature ensures consistent, repeatable recommendations
+      temperature: 0.1 // Low temperature ensures consistent ordering
     });
 
     const parsed = JSON.parse(response.choices[0].message.content);

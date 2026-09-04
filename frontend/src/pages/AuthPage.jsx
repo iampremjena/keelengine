@@ -3,7 +3,7 @@ import { supabase } from '../supabaseClient';
 import AlertModal from '../components/AlertModal';
 
 export default function AuthPage() {
-  const [authType, setAuthType] = useState('person'); // 'person' or 'business'
+  const [authType, setAuthType] = useState('person');
   const [isLogin, setIsLogin] = useState(true);
   
   const [email, setEmail] = useState('');
@@ -14,7 +14,6 @@ export default function AuthPage() {
   const [alertConfig, setAlertConfig] = useState({ isOpen: false, title: '', message: '', type: 'success' });
   const showAlert = (title, message, type) => setAlertConfig({ isOpen: true, title, message, type });
 
-  // 1. STANDARD AUTH
   const handleAuth = async (e) => {
     e.preventDefault();
     setLoading(true);
@@ -49,18 +48,22 @@ export default function AuthPage() {
     }
   };
 
-  // 2. RESTORED: GUEST INSTANT SIGN-IN
+  // 100% Reliable Guest Account Fallback
   const handleGuestSignIn = async () => {
     setLoading(true);
+    const guestEmail = 'guest@keelengine.com';
+    const guestPass = 'KeelEngineGuest2026!';
+    
     try {
-      // Try Supabase Anonymous Sign-In
-      const { error } = await supabase.auth.signInAnonymously();
+      const { error } = await supabase.auth.signInWithPassword({ email: guestEmail, password: guestPass });
       if (error) {
-        // Fallback: If anonymous sign-in is disabled in Supabase, create a temporary guest session
-        const guestEmail = `guest_${Date.now()}@keelengine.temp`;
-        const guestPass = `Guest_${Math.random().toString(36).substring(2, 10)}!`;
-        const { error: signUpErr } = await supabase.auth.signUp({ email: guestEmail, password: guestPass });
+        // If account doesn't exist, create it on the fly
+        const { data, error: signUpErr } = await supabase.auth.signUp({ email: guestEmail, password: guestPass });
         if (signUpErr) throw signUpErr;
+        
+        if (data?.user) {
+          await supabase.from('profiles').upsert({ id: data.user.id, account_type: 'personal', first_name: 'Guest' });
+        }
       }
     } catch (err) {
       showAlert("Guest Access Error", err.message, "error");
@@ -79,7 +82,6 @@ export default function AuthPage() {
           <p className="text-slate-400 text-sm">London Relocation & Commute Copilot</p>
         </div>
 
-        {/* RESTORED: GUEST ACCESS BUTTON */}
         <button
           onClick={handleGuestSignIn}
           disabled={loading}
@@ -94,7 +96,6 @@ export default function AuthPage() {
           <div className="flex-grow border-t border-slate-800"></div>
         </div>
 
-        {/* TOGGLE PERSONAL VS BUSINESS */}
         {!isLogin && (
           <div className="flex bg-slate-950 p-1 rounded-xl border border-slate-800 mb-6">
             <button type="button" onClick={() => setAuthType('person')} className={`flex-1 py-2 rounded-lg text-xs font-bold transition ${authType === 'person' ? 'bg-emerald-600 text-white' : 'text-slate-400'}`}>👤 Personal</button>

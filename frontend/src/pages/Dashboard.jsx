@@ -71,7 +71,6 @@ export default function Dashboard({ session, workspace }) {
   const [isChecklistOpen, setIsChecklistOpen] = useState(false);
   const [listingsModal, setListingsModal] = useState({ isOpen: false, neighborhood: '', isShared: false });
   const [alertConfig, setAlertConfig] = useState({ isOpen: false, title: '', message: '', type: 'success' });
-  const [budgetFallback, setBudgetFallback] = useState({ isOpen: false, message: '', suggestedType: '', userBudget: 0 });
 
   const [isBonnieOpen, setIsBonnieOpen] = useState(false);
   const [chatMessages, setChatMessages] = useState([{ role: 'assistant', content: "Hi! I'm Bonnie 👋 Need help with visas, NHS registration, or TfL costs? I'm your relocation expert. How can I help?" }]);
@@ -94,11 +93,11 @@ export default function Dashboard({ session, workspace }) {
     try {
       const { data } = await supabase.from('saved_suggestions').select('neighborhood').eq('user_id', session.user.id);
       if (data) setSavedNeighborhoods(data.map(item => item.neighborhood));
-    } catch (e) { console.error(e); }
+    } catch (e) {}
   };
 
   const handleSaveSuggestion = async (hub) => {
-    if (!session || session.user.email.includes('@keelengine.temp')) return showAlert("Account Required", "Please create a permanent account to save suggestions.", "error");
+    if (!session || session.user.email.includes('@keelengine.com')) return showAlert("Account Required", "Please create a permanent account to save suggestions.", "error");
     if (savedNeighborhoods.includes(hub.Neighborhood)) return showAlert("Already Saved", `${hub.Neighborhood} is already saved.`, "info");
     try {
       const { error } = await supabase.from('saved_suggestions').insert([{ user_id: session.user.id, neighborhood: hub.Neighborhood, destination: activeDestination, property_type: searchParams.get('type') || propertyType, rent_range: hub.Rent_Range, commute_duration: hub.Commute_Duration, details: hub }]);
@@ -139,19 +138,22 @@ export default function Dashboard({ session, workspace }) {
       const transcript = event.results[0][0].transcript;
       setChatInput(transcript);
       if (!isBonnieOpen) setIsBonnieOpen(true);
-      await sendChatMessageAndSpeak(transcript);
+      await sendChatMessage(transcript, true); // True to play audio
     };
     recognition.start();
   };
 
-  const sendChatMessageAndSpeak = async (msgText) => {
+  const sendChatMessage = async (msgText, isVoice = false) => {
     if (!msgText.trim() || chatLoading) return;
     const updatedMessages = [...chatMessages, { role: 'user', content: msgText.trim() }];
     setChatMessages(updatedMessages); setChatInput(''); setChatLoading(true);
     try {
       const res = await fetch('/api/chat', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ messages: updatedMessages }) });
       const data = await res.json();
-      if (data.reply) { setChatMessages([...updatedMessages, { role: 'assistant', content: data.reply }]); await playTTS(data.reply); }
+      if (data.reply) { 
+        setChatMessages([...updatedMessages, { role: 'assistant', content: data.reply }]); 
+        if (isVoice) await playTTS(data.reply); 
+      }
     } catch (err) { setChatMessages([...updatedMessages, { role: 'assistant', content: "Connection issue." }]); } finally { setChatLoading(false); }
   };
 
@@ -227,7 +229,6 @@ export default function Dashboard({ session, workspace }) {
           body: JSON.stringify({ destination: targetDest, days_per_week: Number(searchParams.get('days')) || 3, property_type: searchParams.get('type'), total_budget: activeTotalBudget })
         });
         const data = await res.json();
-        if (data.budget_insufficient) { setBudgetFallback({ isOpen: true, message: data.message, suggestedType: data.suggested_type, userBudget: data.user_budget }); setLoading(false); return; }
         if (data.error) setErrorMsg(data.error);
         else if (!data.hubs || data.hubs.length === 0) setErrorMsg(`⚠️ No neighborhoods match.`);
         else setResults(data.hubs);
@@ -296,12 +297,12 @@ export default function Dashboard({ session, workspace }) {
               ))}
               {chatMessages.length === 1 && !chatLoading && (
                 <div className="flex flex-col gap-2 mt-2">
-                  {BONNIE_QUICK_PROMPTS.map((prompt, i) => <button key={i} onClick={() => sendChatMessageAndSpeak(prompt)} className="bg-slate-800 hover:bg-emerald-900/50 border border-slate-700 text-slate-300 text-left p-2.5 rounded-xl transition text-[10px]">{prompt}</button>)}
+                  {BONNIE_QUICK_PROMPTS.map((prompt, i) => <button key={i} onClick={() => sendChatMessage(prompt, false)} className="bg-slate-800 hover:bg-emerald-900/50 border border-slate-700 text-slate-300 text-left p-2.5 rounded-xl transition text-[10px]">{prompt}</button>)}
                 </div>
               )}
               {chatLoading && <div className="text-slate-400 text-xs p-3">Bonnie is typing...</div>}
             </div>
-            <form onSubmit={(e) => { e.preventDefault(); sendChatMessageAndSpeak(chatInput); }} className="p-3 bg-slate-950 border-t border-slate-800 flex gap-2">
+            <form onSubmit={(e) => { e.preventDefault(); sendChatMessage(chatInput, false); }} className="p-3 bg-slate-950 border-t border-slate-800 flex gap-2">
               <input type="text" value={chatInput} onChange={(e) => setChatInput(e.target.value)} placeholder="Ask Bonnie..." className="flex-1 bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-white text-xs outline-none focus:border-emerald-500" />
               <button type="submit" disabled={chatLoading} className="bg-emerald-600 text-white font-bold px-3 rounded-xl text-xs">Send</button>
             </form>
@@ -309,6 +310,7 @@ export default function Dashboard({ session, workspace }) {
         )}
       </div>
 
+      {/* ENTERPRISE BATCH SUITE */}
       {workspace === 'business' && showSearchForm && (
         <div className="w-full max-w-2xl mx-auto mb-8 bg-slate-900 border border-blue-500/30 p-6 rounded-3xl shadow-2xl animate-fadeIn">
           <div className="flex items-center gap-3 mb-4">
@@ -329,6 +331,7 @@ export default function Dashboard({ session, workspace }) {
         </div>
       )}
 
+      {/* SEARCH FORM */}
       {showSearchForm && (
         <div className="flex-1 flex justify-center items-center animate-fadeIn pb-12 mt-4">
           <div className="w-full max-w-2xl glass p-6 sm:p-10 rounded-3xl shadow-2xl border border-emerald-900/30">
@@ -414,8 +417,6 @@ export default function Dashboard({ session, workspace }) {
             <button onClick={() => setShowSearchForm(true)} className="bg-slate-800 hover:bg-slate-700 border border-slate-600 text-white text-xs font-bold py-2 px-4 rounded-lg transition">⚙️ Modify Search</button>
           </div>
 
-          {errorMsg && <div className="p-6 glass rounded-2xl border border-red-900/50 text-amber-400 text-center text-sm">{errorMsg}</div>}
-
           {currentItems.map((hub, idx) => {
             const queryDays = searchParams.get('days');
             const daysNum = queryDays ? Number(queryDays) : 3;
@@ -438,8 +439,6 @@ export default function Dashboard({ session, workspace }) {
                 
                 <div className="flex justify-between items-start mb-4">
                   <div><h3 className="text-xl sm:text-2xl font-black text-white">{hub.Neighborhood} <span className="text-xs font-normal text-slate-400">({hub.Station_Outcode})</span></h3></div>
-                  
-                  {/* MATCH SCORE */}
                   <div className="bg-slate-950 border border-emerald-500/30 rounded-xl px-4 py-2 text-center ml-2 relative">
                     <div className="flex justify-center items-center gap-1 mb-0.5">
                       <span className="block text-[9px] text-slate-400 uppercase font-bold">Match Score</span>
@@ -456,13 +455,11 @@ export default function Dashboard({ session, workspace }) {
 
                 <NeighborhoodMap lat={hub.Latitude} lng={hub.Longitude} neighborhood={hub.Neighborhood} targetDestination={activeDestination} />
 
-                {/* METRICS ROW */}
                 <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-5">
                   <div className="bg-slate-950 p-3.5 rounded-xl border border-slate-800 relative">
                     <div className="flex justify-between items-center mb-0.5"><span className="text-[10px] text-slate-400 uppercase font-bold">Rent Allocation</span></div>
                     <span className="text-emerald-400 font-bold text-sm block">{hub.Rent_Range}</span>
                   </div>
-                  
                   <div className="bg-slate-950 p-3.5 rounded-xl border border-slate-800 relative">
                     <div className="flex justify-between items-center mb-0.5">
                       <span className="text-[10px] text-slate-400 uppercase font-bold">Commute</span>
@@ -475,7 +472,6 @@ export default function Dashboard({ session, workspace }) {
                       </div>
                     )}
                   </div>
-
                   <div className="bg-slate-950 p-3.5 rounded-xl border border-slate-800 relative">
                     <div className="flex justify-between items-center mb-0.5">
                       <span className="text-[10px] text-slate-400 uppercase font-bold">TfL Cost / Mo</span>
@@ -488,7 +484,6 @@ export default function Dashboard({ session, workspace }) {
                       </div>
                     )}
                   </div>
-
                   <div className="bg-slate-950 p-3.5 rounded-xl border border-slate-800 relative">
                     <div className="flex justify-between items-center mb-0.5">
                       <span className="text-[10px] text-slate-400 uppercase font-bold">Safety Score</span>
@@ -503,7 +498,6 @@ export default function Dashboard({ session, workspace }) {
                   </div>
                 </div>
 
-                {/* ALL-ROUNDED LIFESTYLE PROFILE (SUPERMARKETS + GYMS + VIBE + SPOTS) */}
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-5">
                   <div className="bg-slate-900/60 p-4 rounded-xl border border-slate-800/80 space-y-3 text-xs text-slate-300">
                     <h4 className="text-[10px] font-bold text-blue-400 uppercase tracking-widest mb-1">📸 Local Lifestyle Profile</h4>
@@ -526,8 +520,8 @@ export default function Dashboard({ session, workspace }) {
                 </div>
 
                 <div className="bg-slate-950/80 p-4 rounded-xl border border-slate-800 mb-6 text-xs text-slate-300">
-                  <span className="text-[10px] font-bold text-emerald-400 uppercase block mb-1">Clyde's Verdict</span>
-                  <p className="font-medium">{hub.AI_Verdict}</p>
+                  <span className="text-[10px] font-bold text-emerald-400 uppercase block mb-1">Did you know?</span>
+                  <p className="font-medium">{hub.Fun_Fact}</p>
                 </div>
 
                 <div className="flex flex-col sm:flex-row gap-2.5 sm:gap-3">
