@@ -333,7 +333,6 @@ export default function Dashboard({ session, workspace }) {
         <div className="flex-1 flex justify-center items-center animate-fadeIn pb-12 mt-4">
           <div className="w-full max-w-2xl glass p-6 sm:p-10 rounded-3xl shadow-2xl border border-emerald-900/30">
             <div className="text-center mb-8">
-              {/* UPDATED HEADER TITLE */}
               <h2 className="text-2xl sm:text-3xl font-black text-white mb-2">Smart Relocation Agent</h2>
               <p className="text-slate-400 text-sm">Tell Clyde your budget and office location, and he'll compute optimal neighborhoods.</p>
             </div>
@@ -395,7 +394,6 @@ export default function Dashboard({ session, workspace }) {
         </div>
       )}
 
-      {/* UPDATED LOADING TEXT (15 SECONDS) */}
       {loading && !showSearchForm && (
         <div className="flex-1 flex items-center justify-center animate-fadeIn py-20">
           <div className="glass rounded-3xl py-16 px-10 text-center border border-emerald-500/30 max-w-lg w-full shadow-2xl">
@@ -441,7 +439,7 @@ export default function Dashboard({ session, workspace }) {
                 <div className="flex justify-between items-start mb-4">
                   <div><h3 className="text-xl sm:text-2xl font-black text-white">{hub.Neighborhood} <span className="text-xs font-normal text-slate-400">({hub.Station_Outcode})</span></h3></div>
                   
-                  {/* UPDATED MATCH SCORE TOOLTIP */}
+                  {/* MATCH SCORE */}
                   <div className="bg-slate-950 border border-emerald-500/30 rounded-xl px-4 py-2 text-center ml-2 relative">
                     <div className="flex justify-center items-center gap-1 mb-0.5">
                       <span className="block text-[9px] text-slate-400 uppercase font-bold">Match Score</span>
@@ -450,7 +448,7 @@ export default function Dashboard({ session, workspace }) {
                     <span className="text-xl font-black text-emerald-400">{hub.Suggestion_Score}</span>
                     {activeTooltip === `score-${idx}` && (
                       <div className="absolute top-full right-0 mt-2 w-48 bg-slate-800 border border-emerald-500 p-3 rounded-xl text-xs z-50 text-slate-200 shadow-2xl text-left">
-                        <strong>Calculation Engine:</strong> Clyde ranks options based on commute convenience (fewer line changes, shorter duration) combined with cost-effectiveness against your budget parameters.
+                        <strong>Calculation Engine:</strong> Ranked by commute speed, transit convenience, safety rating, and budget headroom.
                       </div>
                     )}
                   </div>
@@ -458,13 +456,13 @@ export default function Dashboard({ session, workspace }) {
 
                 <NeighborhoodMap lat={hub.Latitude} lng={hub.Longitude} neighborhood={hub.Neighborhood} targetDestination={activeDestination} />
 
+                {/* METRICS ROW */}
                 <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-5">
                   <div className="bg-slate-950 p-3.5 rounded-xl border border-slate-800 relative">
                     <div className="flex justify-between items-center mb-0.5"><span className="text-[10px] text-slate-400 uppercase font-bold">Rent Allocation</span></div>
                     <span className="text-emerald-400 font-bold text-sm block">{hub.Rent_Range}</span>
                   </div>
                   
-                  {/* UPDATED COMMUTE TOOLTIP */}
                   <div className="bg-slate-950 p-3.5 rounded-xl border border-slate-800 relative">
                     <div className="flex justify-between items-center mb-0.5">
                       <span className="text-[10px] text-slate-400 uppercase font-bold">Commute</span>
@@ -478,7 +476,6 @@ export default function Dashboard({ session, workspace }) {
                     )}
                   </div>
 
-                  {/* UPDATED TFL MATH TOOLTIP */}
                   <div className="bg-slate-950 p-3.5 rounded-xl border border-slate-800 relative">
                     <div className="flex justify-between items-center mb-0.5">
                       <span className="text-[10px] text-slate-400 uppercase font-bold">TfL Cost / Mo</span>
@@ -492,7 +489,6 @@ export default function Dashboard({ session, workspace }) {
                     )}
                   </div>
 
-                  {/* UPDATED SAFETY METRICS TOOLTIP */}
                   <div className="bg-slate-950 p-3.5 rounded-xl border border-slate-800 relative">
                     <div className="flex justify-between items-center mb-0.5">
                       <span className="text-[10px] text-slate-400 uppercase font-bold">Safety Score</span>
@@ -501,9 +497,31 @@ export default function Dashboard({ session, workspace }) {
                     <span className="text-amber-400 font-bold text-sm block">{hub.Safety_Score}/100</span>
                     {activeTooltip === `safety-${idx}` && (
                       <div className="absolute top-full right-0 mt-2 w-48 bg-slate-800 border border-amber-500 p-3 rounded-xl text-xs z-50 text-slate-200 shadow-2xl">
-                        <strong>Data Source:</strong> Verified against Metropolitan Police 12-month borough crime density reports.
+                        <strong>Data Source:</strong> Verified against Metropolitan Police crime density reports.
                       </div>
                     )}
+                  </div>
+                </div>
+
+                {/* ALL-ROUNDED LIFESTYLE PROFILE (SUPERMARKETS + GYMS + VIBE + SPOTS) */}
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-5">
+                  <div className="bg-slate-900/60 p-4 rounded-xl border border-slate-800/80 space-y-3 text-xs text-slate-300">
+                    <h4 className="text-[10px] font-bold text-blue-400 uppercase tracking-widest mb-1">📸 Local Lifestyle Profile</h4>
+                    <div><strong className="text-slate-100 block mb-0.5">🎭 Vibe:</strong> {hub.Vibe}</div>
+                    <div><strong className="text-slate-100 block mb-0.5">📍 Famous Spots:</strong> <span className="text-emerald-400 font-medium">{hub.Famous_Spots}</span></div>
+                    <div><strong className="text-slate-100 block mb-0.5">🛒 Groceries:</strong> {hub.Supermarkets}</div>
+                    <div><strong className="text-slate-100 block mb-0.5">💪 Gyms & Fitness:</strong> {hub.Gyms || 'PureGym, Gymbox, local council leisure center'}</div>
+                    <div><strong className="text-slate-100 block mb-0.5">🚇 Connectivity:</strong> {hub.Connectivity}</div>
+                  </div>
+
+                  <div className={`bg-slate-900/60 p-4 rounded-xl border ${!isUKCreditActive ? 'border-amber-500/50' : 'border-slate-800/80'}`}>
+                    <h4 className={`text-[10px] font-bold uppercase tracking-widest mb-3 ${!isUKCreditActive ? 'text-amber-500' : 'text-emerald-500'}`}>💷 Upfront Move-In Cash Needed</h4>
+                    <div className="space-y-2 text-xs">
+                      <div className="flex justify-between items-center text-slate-400"><span>{!isUKCreditActive ? '6 Months Rent (Avg)' : '1st Month Rent (Avg)'}</span><span className="text-white">£{!isUKCreditActive ? (avgRent * 6).toLocaleString() : avgRent.toLocaleString()}</span></div>
+                      <div className="flex justify-between items-center text-slate-400"><span>5-Week Deposit</span><span className="text-white">£{fiveWeekDeposit.toLocaleString()}</span></div>
+                      <div className="h-px bg-slate-800 my-2"></div>
+                      <div className="flex justify-between font-bold text-slate-100 text-sm"><span>Total Cash Needed:</span><span className={!isUKCreditActive ? "text-amber-400" : "text-emerald-400"}>£{upfrontCash.toLocaleString()}</span></div>
+                    </div>
                   </div>
                 </div>
 

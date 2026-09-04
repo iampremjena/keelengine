@@ -38,18 +38,20 @@ export default async function handler(req, res) {
 
     const prompt = `
     You are Clyde, KeelEngine's advanced Enterprise London relocation AI agent.
-    Generate exactly 5 realistic London neighborhood hubs for a tenant commuting to: '${destination}'.
+    Generate exactly 5 realistic, distinct London neighborhood hubs for a tenant commuting to: '${destination}'.
     
-    STRICT FINANCIAL & SPATIAL ENGINE RULES (Year: 2026):
+    STRICT FINANCIAL & SPATIAL ENGINE RULES:
     - Maximum Combined Budget (Rent + Peak TfL Commute): £${numericBudget}/month.
     - Property Type Requested: '${property_type}'.
     - Office Days: ${days_per_week} days/week.
     
-    DYNAMIC ACCURACY INSTRUCTIONS:
+    DETERMINISTIC EVALUATION & ACCURACY INSTRUCTIONS:
     - Single_Fare_Cost: Provide the exact numerical cost of a peak TfL single journey (e.g. 3.60).
-    - Journey_Breakdown: Explicitly state the exact train/tube lines and the time in minutes (e.g. "Jubilee Line to Waterloo (18 mins)").
-    - Suggestion_Score: A score out of 100 based on how cost-effectively and conveniently the user can commute to '${destination}'. 
-    - SORTING: You MUST sort the final JSON 'hubs' array by 'Suggestion_Score' in descending order (highest score first).
+    - Journey_Breakdown: Explicitly state the exact train/tube lines and time in minutes (e.g. "Jubilee Line to Waterloo (18 mins)").
+    - Gyms: List key local gyms and fitness centers available in the area (e.g. "PureGym, Gymbox, local council leisure center").
+    - Supermarkets: List major grocery options in the area (e.g. "Sainsbury's Local, Waitrose, M&S Food").
+    - Suggestion_Score: Compute a deterministic score out of 100 weighting short commute duration, low fare cost, safety, and budget margin.
+    - SORTING: Sort the final 'hubs' array strictly by 'Suggestion_Score' in descending order (highest score first).
 
     Return ONLY a JSON object with this exact schema:
     {
@@ -72,6 +74,7 @@ export default async function handler(req, res) {
           "Connectivity": "String",
           "Famous_Spots": "String",
           "Supermarkets": "String",
+          "Gyms": "String",
           "AI_Verdict": "String"
         }
       ]
@@ -81,11 +84,16 @@ export default async function handler(req, res) {
     const response = await openai.chat.completions.create({
       model: 'gpt-4o-mini',
       messages: [{ role: 'system', content: prompt }],
-      response_format: { type: "json_object" }
+      response_format: { type: "json_object" },
+      temperature: 0.1 // Low temperature ensures consistent, repeatable recommendations
     });
 
     const parsed = JSON.parse(response.choices[0].message.content);
-    const hubs = parsed.hubs || [];
+    let hubs = parsed.hubs || [];
+
+    // Force strict client-side sorting by Suggestion_Score descending
+    hubs.sort((a, b) => Number(b.Suggestion_Score || 0) - Number(a.Suggestion_Score || 0));
+
     return res.status(200).json({ hubs });
 
   } catch (error) {
