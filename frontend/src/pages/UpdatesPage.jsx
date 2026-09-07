@@ -1,74 +1,63 @@
-import React, { useState, useEffect } from 'react';
-import { supabase } from '../supabaseClient';
-import AlertModal from '../components/AlertModal';
+import React from 'react';
+import { useNavigate } from 'react-router-dom';
 
-export default function UpdatesPage({ session, isAdmin }) {
-  useEffect(() => { document.title = "KeelEngine | Platform Updates"; }, []);
+export default function UpdatesPage() {
+  const navigate = useNavigate();
 
-  const [updates, setUpdates] = useState([]);
-  const [newTitle, setNewTitle] = useState('');
-  const [newContent, setNewContent] = useState('');
-  const [publishing, setPublishing] = useState(false);
-  const [alertConfig, setAlertConfig] = useState({ isOpen: false, title: '', message: '', type: 'success' });
-  const showAlert = (title, message, type) => setAlertConfig({ isOpen: true, title, message, type });
-
-  useEffect(() => { fetchUpdates(); }, []);
-
-  const fetchUpdates = async () => {
-    // 🛡️ STRICT FILTER: Never pull the developer bio into the updates feed.
-    const { data } = await supabase.from('forum_updates').select('*').neq('title', 'ABOUT_DEVELOPER').order('created_at', { ascending: false });
-    if (data) setUpdates(data);
-  };
-
-  const handlePublish = async (e) => {
-    e.preventDefault();
-    if (!newTitle.trim() || !newContent.trim()) return;
-    setPublishing(true);
-    try {
-      const { error } = await supabase.from('forum_updates').insert([{ title: newTitle, content: newContent, author_email: session.user.email }]);
-      if (error) throw error;
-      showAlert('Published!', 'Your new platform update is live.', 'success');
-      setNewTitle(''); setNewContent(''); fetchUpdates();
-    } catch (error) { showAlert('Error', error.message, 'error'); } finally { setPublishing(false); }
-  };
-
-  const handleDelete = async (id) => {
-    try { await supabase.from('forum_updates').delete().eq('id', id); fetchUpdates(); } 
-    catch (e) { showAlert('Error', 'Could not delete update.', 'error'); }
-  };
+  const updatesList = [
+    {
+      date: 'September 2026',
+      tag: 'Platform Update',
+      title: 'Enterprise Batch Relocation Suite Live',
+      description: 'Businesses can now upload employee batch spreadsheets (.xlsx) to automatically generate and dispatch tailored London relocation guides directly to new hires.'
+    },
+    {
+      date: 'August 2026',
+      tag: 'TfL Fare Matrix',
+      title: '2026 TfL Peak & Off-Peak Fare Alignment',
+      description: 'Clyde’s travel cost engine has been updated with 2026 TfL Zone 1-6 peak single fare schedules to ensure monthly commute math remains 100% accurate.'
+    },
+    {
+      date: 'July 2026',
+      tag: 'AI Assistant',
+      title: 'Bonnie Voice Assistant & TTS Stream Integration',
+      description: 'Bonnie can now speak her answers back to you via OpenAI TTS whenever voice input is captured, providing instant advice on UK Visas, NHS/GP registration, and Monzo setups.'
+    },
+    {
+      date: 'June 2026',
+      tag: 'Housing Portals',
+      title: 'SpareRoom & OpenRent Direct Portal Deep-Links',
+      description: 'Suggested listings now dynamically link directly to SpareRoom for shared flatshares and OpenRent/Zoopla for private studio and 1-bed flats.'
+    }
+  ];
 
   return (
-    <div className="max-w-4xl mx-auto px-4 py-12">
-      <AlertModal {...alertConfig} onClose={() => setAlertConfig({ ...alertConfig, isOpen: false })} />
-      <div className="mb-8">
-        <h2 className="text-3xl font-black text-white tracking-tight">Platform Updates 📢</h2>
-        <p className="text-slate-400 text-sm mt-2">The latest features, fixes, and architecture drops for KeelEngine.</p>
-      </div>
-
-      {isAdmin && (
-        <div className="glass p-8 rounded-3xl shadow-2xl border border-emerald-900/50 mb-10">
-          <h3 className="text-xl font-bold text-emerald-400 mb-4">Publish New Update</h3>
-          <form onSubmit={handlePublish} className="space-y-4">
-            <input type="text" placeholder="Update Title (e.g. Version 10.5 Deployed)" value={newTitle} onChange={(e) => setNewTitle(e.target.value)} required className="w-full bg-slate-900/80 border border-slate-700/50 rounded-xl px-5 py-4 text-white outline-none focus:border-emerald-500 font-bold" />
-            <textarea rows="4" placeholder="What's new in this update?..." value={newContent} onChange={(e) => setNewContent(e.target.value)} required className="w-full bg-slate-900/80 border border-slate-700/50 rounded-xl px-5 py-4 text-white outline-none focus:border-emerald-500 leading-relaxed text-sm"></textarea>
-            <button type="submit" disabled={publishing} className="bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 text-white font-bold py-4 px-8 rounded-xl shadow-lg tracking-wide text-sm">{publishing ? 'Publishing...' : 'Publish Update to Global Feed'}</button>
-          </form>
+    <div className="max-w-5xl mx-auto px-4 py-8 animate-fadeIn">
+      <div className="glass rounded-3xl border border-slate-700/50 p-6 sm:p-10 shadow-2xl">
+        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 pb-6 border-b border-slate-800 mb-8">
+          <div>
+            <h2 className="text-2xl sm:text-3xl font-black text-white">Platform Updates & Market Logs</h2>
+            <p className="text-slate-400 text-xs mt-1">Latest feature rollouts, London transit fare updates, and relocation intelligence logs.</p>
+          </div>
+          <button onClick={() => navigate('/home')} className="bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs py-2.5 px-4 rounded-xl transition shadow-md">
+            ← Back to Dashboard
+          </button>
         </div>
-      )}
 
-      <div className="space-y-6">
-        {updates.length === 0 ? (
-          <div className="text-center py-16 glass rounded-3xl border border-slate-800"><span className="text-4xl block mb-4">🚀</span><p className="text-slate-400 font-medium">No platform updates have been published yet.</p></div>
-        ) : (
-          updates.map((update) => (
-            <div key={update.id} className="glass p-8 rounded-3xl shadow-xl border border-slate-700/40 relative group hover:border-slate-600 transition">
-              {isAdmin && <button onClick={() => handleDelete(update.id)} className="absolute top-8 right-8 text-red-500 opacity-0 group-hover:opacity-100 transition bg-red-500/10 hover:bg-red-500 hover:text-white px-3 py-1 rounded-lg text-xs font-bold border border-red-500/20">Delete</button>}
-              <h3 className="text-2xl font-bold text-white mb-3">{update.title}</h3>
-              <span className="text-xs font-mono text-emerald-400 bg-emerald-500/10 px-3 py-1 rounded-full border border-emerald-500/20">{new Date(update.created_at).toLocaleDateString()}</span>
-              <p className="mt-6 text-slate-300 leading-relaxed whitespace-pre-wrap font-medium">{update.content}</p>
+        <div className="space-y-6">
+          {updatesList.map((item, idx) => (
+            <div key={idx} className="bg-slate-950 p-6 rounded-2xl border border-slate-800/80 hover:border-emerald-500/40 transition shadow-lg">
+              <div className="flex justify-between items-center mb-3">
+                <span className="text-[10px] font-mono font-bold uppercase tracking-widest text-emerald-400 bg-emerald-500/10 px-3 py-1 rounded-md border border-emerald-500/30">
+                  {item.tag}
+                </span>
+                <span className="text-xs text-slate-500 font-medium">{item.date}</span>
+              </div>
+              <h3 className="text-lg font-bold text-white mb-2">{item.title}</h3>
+              <p className="text-xs text-slate-300 leading-relaxed">{item.description}</p>
             </div>
-          ))
-        )}
+          ))}
+        </div>
       </div>
     </div>
   );

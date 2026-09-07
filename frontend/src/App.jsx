@@ -5,10 +5,8 @@ import 'leaflet/dist/leaflet.css';
 
 import AuthPage from './pages/AuthPage';
 import Dashboard from './pages/Dashboard';
-import SurveyPage from './pages/SurveyPage';
 import ProfileHub from './pages/ProfileHub';
 import UpdatesPage from './pages/UpdatesPage';
-import AdminHub from './pages/AdminHub';
 
 function AppContent() {
   const [session, setSession] = useState(null);
@@ -16,15 +14,11 @@ function AppContent() {
   const [isAdmin, setIsAdmin] = useState(false);
   const [loading, setLoading] = useState(true);
   
-  // WORKSPACE STATE
   const [workspace, setWorkspace] = useState('personal'); 
   const [showGateway, setShowGateway] = useState(false);
 
   const navigate = useNavigate();
   const location = useLocation();
-
-  const [londonTime, setLondonTime] = useState('');
-  const [londonTemp, setLondonTemp] = useState('18°C ⛅');
 
   useEffect(() => {
     const initializeAuth = async () => {
@@ -43,22 +37,12 @@ function AppContent() {
     return () => subscription.unsubscribe();
   }, []);
 
-  useEffect(() => {
-    const updateTime = () => {
-      const now = new Date();
-      setLondonTime(now.toLocaleDateString('en-GB', { timeZone: 'Europe/London', weekday: 'short', day: 'numeric', month: 'short' }) + ' • ' + now.toLocaleTimeString('en-GB', { timeZone: 'Europe/London', hour: '2-digit', minute: '2-digit' }) + ' BST');
-    };
-    updateTime();
-    setInterval(updateTime, 1000);
-  }, []);
-
   const checkAccountStatus = async (userId) => {
     const { data } = await supabase.from('profiles').select('*').eq('id', userId).single();
     if (data) {
       setUserProfile(data);
       setIsAdmin(data.is_admin);
       
-      // ADMIN INTERCEPT GATEWAY
       if (data.is_admin) {
         setShowGateway(true);
       } else if (data.account_type === 'business') {
@@ -72,7 +56,6 @@ function AppContent() {
 
   if (loading) return <div className="min-h-screen flex items-center justify-center"><div className="w-12 h-12 border-4 border-emerald-500 border-t-transparent rounded-full animate-spin"></div></div>;
 
-  // ADMIN WORKSPACE SELECTOR
   if (showGateway) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-slate-950 p-4">
@@ -107,11 +90,9 @@ function AppContent() {
 
             <div className="flex flex-wrap justify-center items-center gap-4 sm:gap-6 text-xs sm:text-sm font-semibold text-slate-400 w-full xl:w-auto">
               <button onClick={() => navigate('/home')} className={`hover:text-white transition ${location.pathname === '/home' ? 'text-emerald-400' : ''}`}>Dashboard</button>
-              <button onClick={() => navigate('/updates')} className={`hover:text-white transition ${location.pathname === '/updates' ? 'text-emerald-400' : ''}`}>Updates</button>
               
-              {isAdmin && (
-                <button onClick={() => navigate('/admin')} className={`hover:text-emerald-300 text-emerald-500 transition ${location.pathname === '/admin' ? 'border-b-2 border-emerald-500 pb-1' : ''}`}>🛡️ Admin Hub</button>
-              )}
+              {/* WORKING UPDATES BUTTON */}
+              <button onClick={() => navigate('/updates')} className={`hover:text-white transition ${location.pathname === '/updates' ? 'text-emerald-400' : ''}`}>Updates</button>
 
               <button onClick={() => navigate(session ? '/profile/basic' : '/')} className="relative group cursor-pointer ml-0 sm:ml-4">
                 <span className={`bg-slate-800 text-slate-300 px-3 py-2 rounded-lg text-xs font-mono transition border ${session ? 'border-emerald-500/50 text-emerald-400' : 'border-slate-600'}`}>
@@ -125,8 +106,8 @@ function AppContent() {
 
       <Routes>
         <Route path="/" element={!session ? <AuthPage /> : <Navigate to="/home" />} />
-        <Route path="/home" element={<Dashboard session={session} profile={userProfile} workspace={workspace} />} />
-        <Route path="/admin" element={<AdminHub session={session} isAdmin={isAdmin} />} />
+        <Route path="/home" element={<Dashboard session={session} workspace={workspace} />} />
+        <Route path="/updates" element={<UpdatesPage />} />
         <Route path="/profile/*" element={session ? <ProfileHub session={session} /> : <Navigate to="/" />} />
         <Route path="*" element={<Navigate to="/home" />} />
       </Routes>
