@@ -3,7 +3,7 @@ import { supabase } from '../supabaseClient';
 import AlertModal from '../components/AlertModal';
 
 export default function AuthPage() {
-  const [authType, setAuthType] = useState('person');
+  const [authType, setAuthType] = useState('person'); // 'person' or 'business'
   const [isLogin, setIsLogin] = useState(true);
   
   const [email, setEmail] = useState('');
@@ -14,6 +14,7 @@ export default function AuthPage() {
   const [alertConfig, setAlertConfig] = useState({ isOpen: false, title: '', message: '', type: 'success' });
   const showAlert = (title, message, type) => setAlertConfig({ isOpen: true, title, message, type });
 
+  // 1. STANDARD EMAIL/PASSWORD AUTH
   const handleAuth = async (e) => {
     e.preventDefault();
     setLoading(true);
@@ -48,26 +49,19 @@ export default function AuthPage() {
     }
   };
 
-  // 100% Reliable Guest Account Fallback
-  const handleGuestSignIn = async () => {
-    setLoading(true);
-    const guestEmail = 'guest@keelengine.com';
-    const guestPass = 'KeelEngineGuest2026!';
-    
+  // 2. GITHUB OAUTH LOGIN
+  const handleGitHubLogin = async () => {
     try {
-      const { error } = await supabase.auth.signInWithPassword({ email: guestEmail, password: guestPass });
-      if (error) {
-        // If account doesn't exist, create it on the fly
-        const { data, error: signUpErr } = await supabase.auth.signUp({ email: guestEmail, password: guestPass });
-        if (signUpErr) throw signUpErr;
-        
-        if (data?.user) {
-          await supabase.from('profiles').upsert({ id: data.user.id, account_type: 'personal', first_name: 'Guest' });
+      setLoading(true);
+      const { error } = await supabase.auth.signInWithOAuth({
+        provider: 'github',
+        options: {
+          redirectTo: `${window.location.origin}/home`
         }
-      }
+      });
+      if (error) throw error;
     } catch (err) {
-      showAlert("Guest Access Error", err.message, "error");
-    } finally {
+      showAlert("GitHub Login Failed", err.message, "error");
       setLoading(false);
     }
   };
@@ -82,17 +76,24 @@ export default function AuthPage() {
           <p className="text-slate-400 text-sm">London Relocation & Commute Copilot</p>
         </div>
 
-        <button
-          onClick={handleGuestSignIn}
-          disabled={loading}
-          className="w-full bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 font-bold py-3.5 px-4 rounded-2xl border border-emerald-500/30 transition text-xs mb-6 flex items-center justify-center gap-2 shadow-lg"
-        >
-          <span>⚡</span> Continue as Guest (Instant Access)
-        </button>
+        {/* GITHUB SOCIAL LOGIN */}
+        <div className="mb-6">
+          <button
+            type="button"
+            onClick={handleGitHubLogin}
+            disabled={loading}
+            className="w-full bg-slate-950 hover:bg-slate-800 text-white font-bold py-3.5 px-4 rounded-2xl border border-slate-800 transition text-xs flex items-center justify-center gap-3 shadow-lg"
+          >
+            <svg className="w-4 h-4 fill-current text-white" viewBox="0 0 24 24">
+              <path fillRule="evenodd" clipRule="evenodd" d="M12 2C6.477 2 2 6.484 2 12.017c0 4.425 2.865 8.18 6.839 9.504.5.092.682-.217.682-.483 0-.237-.008-.868-.013-1.703-2.782.605-3.369-1.343-3.369-1.343-.454-1.158-1.11-1.466-1.11-1.466-.908-.62.069-.608.069-.608 1.003.07 1.53 1.032 1.53 1.032.892 1.53 2.341 1.088 2.91.832.092-.647.35-1.088.636-1.338-2.22-.253-4.555-1.113-4.555-4.951 0-1.093.39-1.988 1.029-2.688-.103-.253-.446-1.272.098-2.65 0 0 .84-.27 2.75 1.026A9.564 9.564 0 0112 6.844c.85.004 1.705.115 2.504.337 1.909-1.296 2.747-1.027 2.747-1.027.546 1.379.202 2.398.1 2.651.64.7 1.028 1.595 1.028 2.688 0 3.848-2.339 4.695-4.566 4.943.359.309.678.92.678 1.855 0 1.338-.012 2.419-.012 2.747 0 .268.18.58.688.482A10.019 10.019 0 0022 12.017C22 6.484 17.522 2 12 2z" />
+            </svg>
+            Sign in with GitHub
+          </button>
+        </div>
 
         <div className="relative flex py-2 items-center mb-6">
           <div className="flex-grow border-t border-slate-800"></div>
-          <span className="flex-shrink mx-4 text-[10px] text-slate-500 font-bold uppercase tracking-widest">Or Account Login</span>
+          <span className="flex-shrink mx-4 text-[10px] text-slate-500 font-bold uppercase tracking-widest">Or Email Login</span>
           <div className="flex-grow border-t border-slate-800"></div>
         </div>
 
