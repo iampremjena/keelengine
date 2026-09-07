@@ -64,8 +64,11 @@ export default function Dashboard({ session, workspace }) {
   const [errorMsg, setErrorMsg] = useState('');
   const [currentPage, setCurrentPage] = useState(1);
   const itemsPerPage = 5;
-  const [batchProgress, setBatchProgress] = useState({ active: false, total: 0, current: 0, currentName: '' });
   const [savedNeighborhoods, setSavedNeighborhoods] = useState([]);
+
+  // Batch specific states
+  const [batchCandidates, setBatchCandidates] = useState([]);
+  const [batchProgress, setBatchProgress] = useState({ active: false, total: 0, current: 0, currentName: '' });
 
   const [activeTooltip, setActiveTooltip] = useState(null);
   const [isChecklistOpen, setIsChecklistOpen] = useState(false);
@@ -138,7 +141,7 @@ export default function Dashboard({ session, workspace }) {
       const transcript = event.results[0][0].transcript;
       setChatInput(transcript);
       if (!isBonnieOpen) setIsBonnieOpen(true);
-      await sendChatMessage(transcript, true); // True to play audio
+      await sendChatMessage(transcript, true);
     };
     recognition.start();
   };
@@ -163,23 +166,6 @@ export default function Dashboard({ session, workspace }) {
   const downloadTemplate = () => {
     const ws = XLSX.utils.aoa_to_sheet([["Employee Name", "Office Location", "Post Code", "Preferences", "Salary", "Employee Email", "Watcher Email"], ["Sarah Jenkins", "Canary Wharf", "E14", "1-Bed Private", 65000, "sarah@example.com", "hr@yourcompany.com"]]);
     const wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, ws, "Employees"); XLSX.writeFile(wb, "KeelEngine_Batch_Template.xlsx");
-  };
-  const handleFileUpload = (e) => {
-    const file = e.target.files[0];
-    if (!file) return;
-    const reader = new FileReader();
-    reader.onload = async (evt) => {
-      const wb = XLSX.read(evt.target.result, { type: 'binary' });
-      const data = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]]);
-      setBatchProgress({ active: true, total: data.length, current: 0, currentName: '' });
-      for (let i = 0; i < data.length; i++) {
-        setBatchProgress(prev => ({ ...prev, current: i + 1, currentName: data[i]['Employee Name'] }));
-        try { await fetch('/api/batch-relocate', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data[i]) }); } catch (err) {}
-      }
-      setBatchProgress({ active: false, total: 0, current: 0, currentName: '' });
-      showAlert("Batch Complete", `Successfully processed ${data.length} employees.`, "success");
-    };
-    reader.readAsBinaryString(file);
   };
 
   // FORM
@@ -310,22 +296,104 @@ export default function Dashboard({ session, workspace }) {
         )}
       </div>
 
-      {/* ENTERPRISE BATCH SUITE */}
+      {/* ENTERPRISE BATCH RELOCATION SUITE (BUSINESS WORKSPACE) */}
       {workspace === 'business' && showSearchForm && (
-        <div className="w-full max-w-2xl mx-auto mb-8 bg-slate-900 border border-blue-500/30 p-6 rounded-3xl shadow-2xl animate-fadeIn">
+        <div className="w-full max-w-2xl mx-auto mb-8 bg-slate-900 border border-blue-500/30 p-6 sm:p-8 rounded-3xl shadow-2xl animate-fadeIn">
           <div className="flex items-center gap-3 mb-4">
-            <span className="text-2xl">🏢</span>
-            <div><h3 className="text-lg font-bold text-white">Enterprise Batch Relocation</h3><p className="text-xs text-slate-400">Upload new hire spreadsheets.</p></div>
+            <span className="text-3xl">🏢</span>
+            <div>
+              <h3 className="text-lg font-bold text-white">Enterprise Batch Relocation</h3>
+              <p className="text-xs text-slate-400">Upload employee spreadsheets to run AI search and dispatch custom relocation guides.</p>
+            </div>
           </div>
+
           {!batchProgress.active ? (
-            <div className="flex flex-col sm:flex-row gap-3">
-              <button onClick={downloadTemplate} className="flex-1 bg-slate-800 hover:bg-slate-700 text-blue-400 font-bold py-3 rounded-xl border border-slate-700 text-xs transition">1. Download Template</button>
-              <div className="flex-1 relative"><input type="file" accept=".xlsx, .xls" onChange={handleFileUpload} className="absolute inset-0 w-full h-full opacity-0 cursor-pointer" /><button className="w-full bg-blue-600 hover:bg-blue-500 text-white font-bold py-3 rounded-xl text-xs transition shadow-lg">2. Upload & Dispatch</button></div>
+            <div className="space-y-4">
+              <div className="flex flex-col sm:flex-row gap-3">
+                <button 
+                  type="button"
+                  onClick={downloadTemplate} 
+                  className="flex-1 bg-slate-800 hover:bg-slate-700 text-blue-400 font-bold py-3 rounded-xl border border-slate-700 text-xs transition"
+                >
+                  1. Download Template (.xlsx)
+                </button>
+                
+                <div className="flex-1 relative">
+                  <input 
+                    type="file" 
+                    accept=".xlsx, .xls" 
+                    onChange={(e) => {
+                      const file = e.target.files[0];
+                      if (!file) return;
+                      const reader = new FileReader();
+                      reader.onload = (evt) => {
+                        const wb = XLSX.read(evt.target.result, { type: 'binary' });
+                        const data = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]]);
+                        setBatchCandidates(data);
+                      };
+                      reader.readAsBinaryString(file);
+                    }} 
+                    className="absolute inset-0 w-full h-full opacity-0 cursor-pointer" 
+                  />
+                  <button type="button" className="w-full bg-blue-600 hover:bg-blue-500 text-white font-bold py-3 rounded-xl text-xs transition shadow-lg">
+                    2. Select Excel File
+                  </button>
+                </div>
+              </div>
+
+              {/* PREVIEW & SUBMIT BUTTON */}
+              {batchCandidates && batchCandidates.length > 0 && (
+                <div className="bg-slate-950 p-4 rounded-2xl border border-blue-500/40 space-y-3 animate-fadeIn">
+                  <div className="flex justify-between items-center text-xs text-slate-300">
+                    <span className="font-bold text-blue-400">Loaded {batchCandidates.length} Candidates</span>
+                    <button onClick={() => setBatchCandidates([])} className="text-slate-500 hover:text-white">Clear</button>
+                  </div>
+                  
+                  <ul className="text-xs text-slate-400 space-y-1 max-h-32 overflow-y-auto">
+                    {batchCandidates.map((c, i) => (
+                      <li key={i} className="flex justify-between border-b border-slate-900 pb-1">
+                        <span className="text-white font-medium">{c['Employee Name']}</span>
+                        <span>{c['Office Location']} • £{Number(c['Salary'] || 0).toLocaleString()}</span>
+                      </li>
+                    ))}
+                  </ul>
+
+                  <button
+                    type="button"
+                    onClick={async () => {
+                      setBatchProgress({ active: true, total: batchCandidates.length, current: 0, currentName: '' });
+                      for (let i = 0; i < batchCandidates.length; i++) {
+                        const candidate = batchCandidates[i];
+                        setBatchProgress(prev => ({ ...prev, current: i + 1, currentName: candidate['Employee Name'] }));
+                        try {
+                          await fetch('/api/batch-relocate', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify(candidate)
+                          });
+                        } catch (err) {
+                          console.error(`Error processing candidate ${candidate['Employee Name']}:`, err);
+                        }
+                      }
+                      setBatchProgress({ active: false, total: 0, current: 0, currentName: '' });
+                      showAlert("Batch Complete", `Processed and emailed all ${batchCandidates.length} candidates successfully.`, "success");
+                    }}
+                    className="w-full bg-emerald-600 hover:bg-emerald-500 text-white font-bold py-3.5 rounded-xl text-xs transition shadow-xl flex items-center justify-center gap-2"
+                  >
+                    <span>🚀</span> Submit & Run AI Search for All {batchCandidates.length} Candidates
+                  </button>
+                </div>
+              )}
             </div>
           ) : (
-            <div className="bg-slate-950 p-4 rounded-xl border border-blue-500/50">
-              <p className="text-blue-400 text-xs font-bold mb-2">Processing: {batchProgress.currentName} ({batchProgress.current} of {batchProgress.total})</p>
-              <div className="w-full bg-slate-800 h-2 rounded-full overflow-hidden"><div className="bg-blue-500 h-2 transition-all" style={{ width: `${(batchProgress.current / batchProgress.total) * 100}%` }}></div></div>
+            <div className="bg-slate-950 p-5 rounded-2xl border border-blue-500/50 space-y-3">
+              <div className="flex justify-between text-xs text-blue-400 font-bold">
+                <span>Processing: {batchProgress.currentName}</span>
+                <span>{batchProgress.current} of {batchProgress.total}</span>
+              </div>
+              <div className="w-full bg-slate-800 h-2.5 rounded-full overflow-hidden">
+                <div className="bg-blue-500 h-2.5 transition-all duration-300" style={{ width: `${(batchProgress.current / batchProgress.total) * 100}%` }}></div>
+              </div>
             </div>
           )}
         </div>
@@ -528,6 +596,35 @@ export default function Dashboard({ session, workspace }) {
                   <button onClick={() => setListingsModal({ isOpen: true, neighborhood: hub.Neighborhood, isShared: isShared })} className="flex-1 bg-emerald-600 hover:bg-emerald-500 text-white font-bold py-3 px-4 rounded-xl text-xs transition shadow-lg flex items-center justify-center gap-1.5"><span>🏘️</span> Suggested Listings</button>
                   <button onClick={() => handleSaveSuggestion(hub)} className={`flex-1 ${isSaved ? 'bg-slate-800 text-emerald-400 border border-emerald-500/50' : 'bg-slate-800 hover:bg-slate-700 text-white'} font-bold py-3 px-4 rounded-xl text-xs transition shadow-lg flex items-center justify-center gap-1.5 border border-slate-700`}><span>{isSaved ? '✅' : '🔖'}</span> {isSaved ? 'Saved to Profile' : 'Save Suggestion'}</button>
                   <a href={`https://www.google.com/maps/dir/?api=1&origin=${hub.Latitude},${hub.Longitude}&destination=${encodeURIComponent(activeDestination)}&travelmode=transit`} target="_blank" rel="noreferrer" className="flex-1 bg-blue-600 hover:bg-blue-500 text-white font-bold py-3 px-4 rounded-xl text-center text-xs transition shadow-lg flex items-center justify-center gap-1.5">🗺️ Maps Route</a>
+                  
+                  {/* INDIVIDUAL CANDIDATE EMAIL DISPATCH BUTTON (BUSINESS MODE ONLY) */}
+                  {workspace === 'business' && (
+                    <button
+                      type="button"
+                      onClick={async () => {
+                        try {
+                          const res = await fetch('/api/batch-relocate', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({
+                              'Employee Name': 'Candidate',
+                              'Office Location': activeDestination,
+                              'Preferences': propertyType,
+                              'Salary': grossSalary,
+                              'Employee Email': session?.user?.email
+                            })
+                          });
+                          if (!res.ok) throw new Error('Failed to dispatch email');
+                          showAlert("Email Dispatched", `Sent relocation breakdown for ${hub.Neighborhood} to candidate.`, "success");
+                        } catch (err) {
+                          showAlert("Dispatch Error", err.message, "error");
+                        }
+                      }}
+                      className="flex-1 bg-purple-600 hover:bg-purple-500 text-white font-bold py-3 px-4 rounded-xl text-xs transition shadow-lg flex items-center justify-center gap-1.5"
+                    >
+                      <span>📧</span> Email Candidate
+                    </button>
+                  )}
                 </div>
               </div>
             );
