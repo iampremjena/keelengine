@@ -107,7 +107,7 @@ function AppContent() {
       <Routes>
         <Route path="/" element={!session ? <AuthPage /> : <Navigate to="/home" />} />
         <Route path="/home" element={<Dashboard session={session} workspace={workspace} />} />
-        <Route path="/updates" element={<UpdatesPage />} />
+        <Route path="/updates" element={<UpdatesPage session={session} isAdmin={isAdmin} />} />
         <Route path="/profile/*" element={session ? <ProfileHub session={session} /> : <Navigate to="/" />} />
         <Route path="*" element={<Navigate to="/home" />} />
       </Routes>
