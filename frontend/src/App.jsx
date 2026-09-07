@@ -32,29 +32,45 @@ function AppContent() {
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (_event, newSession) => {
       setSession(newSession);
       if (newSession) await checkAccountStatus(newSession.user.id);
-      else { setIsAdmin(false); setUserProfile(null); setLoading(false); setShowGateway(false); }
+      else { 
+        setIsAdmin(false); 
+        setUserProfile(null); 
+        setLoading(false); 
+        setShowGateway(false); 
+      }
     });
     return () => subscription.unsubscribe();
   }, []);
 
   const checkAccountStatus = async (userId) => {
-    const { data } = await supabase.from('profiles').select('*').eq('id', userId).single();
-    if (data) {
-      setUserProfile(data);
-      setIsAdmin(data.is_admin);
-      
-      if (data.is_admin) {
-        setShowGateway(true);
-      } else if (data.account_type === 'business') {
-        setWorkspace('business');
-      } else {
-        setWorkspace('personal');
+    try {
+      const { data } = await supabase.from('profiles').select('*').eq('id', userId).single();
+      if (data) {
+        setUserProfile(data);
+        setIsAdmin(!!data.is_admin);
+        
+        if (data.is_admin) {
+          setShowGateway(true);
+        } else if (data.account_type === 'business') {
+          setWorkspace('business');
+        } else {
+          setWorkspace('personal');
+        }
       }
+    } catch (err) {
+      console.error("Error fetching user profile:", err);
+    } finally {
+      setLoading(false);
     }
-    setLoading(false);
   };
 
-  if (loading) return <div className="min-h-screen flex items-center justify-center"><div className="w-12 h-12 border-4 border-emerald-500 border-t-transparent rounded-full animate-spin"></div></div>;
+  if (loading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-slate-950">
+        <div className="w-12 h-12 border-4 border-emerald-500 border-t-transparent rounded-full animate-spin"></div>
+      </div>
+    );
+  }
 
   if (showGateway) {
     return (
@@ -64,8 +80,18 @@ function AppContent() {
           <h2 className="text-2xl font-black text-white mb-2">Welcome Back, Admin.</h2>
           <p className="text-slate-400 text-sm mb-8">Which workspace would you like to access today?</p>
           <div className="flex flex-col sm:flex-row gap-4">
-            <button onClick={() => { setWorkspace('personal'); setShowGateway(false); }} className="flex-1 bg-slate-800 hover:bg-slate-700 text-white font-bold py-4 rounded-xl border border-slate-600 transition shadow-lg">👤 Personal Account</button>
-            <button onClick={() => { setWorkspace('business'); setShowGateway(false); }} className="flex-1 bg-emerald-600 hover:bg-emerald-500 text-white font-bold py-4 rounded-xl shadow-lg transition">🏢 Business / Enterprise</button>
+            <button 
+              onClick={() => { setWorkspace('personal'); setShowGateway(false); }} 
+              className="flex-1 bg-slate-800 hover:bg-slate-700 text-white font-bold py-4 rounded-xl border border-slate-600 transition shadow-lg"
+            >
+              👤 Personal Account
+            </button>
+            <button 
+              onClick={() => { setWorkspace('business'); setShowGateway(false); }} 
+              className="flex-1 bg-emerald-600 hover:bg-emerald-500 text-white font-bold py-4 rounded-xl shadow-lg transition"
+            >
+              🏢 Business / Enterprise
+            </button>
           </div>
         </div>
       </div>
@@ -75,10 +101,10 @@ function AppContent() {
   const showNavbar = location.pathname !== '/';
 
   return (
-    <div className="min-h-screen text-slate-100 antialiased selection:bg-emerald-500 selection:text-white">
+    <div className="min-h-screen text-slate-100 antialiased selection:bg-emerald-500 selection:text-white bg-slate-950">
       {showNavbar && (
         <nav className="max-w-7xl mx-auto px-4 pt-6 pb-2">
-          <div className="glass rounded-3xl px-5 sm:px-8 py-4 flex flex-col xl:flex-row justify-between items-center gap-4 shadow-2xl relative z-50 border border-slate-700/50">
+          <div className="glass rounded-3xl px-5 sm:px-8 py-4 flex flex-col xl:flex-row justify-between items-center gap-4 shadow-2xl relative z-50 border border-slate-700/50 bg-slate-900/80 backdrop-blur-md">
             <div className="flex flex-col sm:flex-row items-center gap-3 sm:gap-6 w-full xl:w-auto justify-between xl:justify-start">
               <div className="flex items-center gap-2 cursor-pointer" onClick={() => navigate('/home')}>
                 <h1 className="text-2xl sm:text-3xl font-black tracking-tight text-white hover:text-emerald-400 transition-colors">KeelEngine</h1>
@@ -89,13 +115,16 @@ function AppContent() {
             </div>
 
             <div className="flex flex-wrap justify-center items-center gap-4 sm:gap-6 text-xs sm:text-sm font-semibold text-slate-400 w-full xl:w-auto">
-              <button onClick={() => navigate('/home')} className={`hover:text-white transition ${location.pathname === '/home' ? 'text-emerald-400' : ''}`}>Dashboard</button>
+              <button onClick={() => navigate('/home')} className={`hover:text-white transition ${location.pathname === '/home' ? 'text-emerald-400 font-bold' : ''}`}>
+                Dashboard
+              </button>
               
-              {/* WORKING UPDATES BUTTON */}
-              <button onClick={() => navigate('/updates')} className={`hover:text-white transition ${location.pathname === '/updates' ? 'text-emerald-400' : ''}`}>Updates</button>
+              <button onClick={() => navigate('/updates')} className={`hover:text-white transition ${location.pathname === '/updates' ? 'text-emerald-400 font-bold' : ''}`}>
+                Updates
+              </button>
 
               <button onClick={() => navigate(session ? '/profile/basic' : '/')} className="relative group cursor-pointer ml-0 sm:ml-4">
-                <span className={`bg-slate-800 text-slate-300 px-3 py-2 rounded-lg text-xs font-mono transition border ${session ? 'border-emerald-500/50 text-emerald-400' : 'border-slate-600'}`}>
+                <span className={`bg-slate-800 text-slate-300 px-3.5 py-2 rounded-xl text-xs font-mono transition border ${session ? 'border-emerald-500/50 text-emerald-400' : 'border-slate-600'}`}>
                   {session ? `👤 Profile` : 'Sign in'}
                 </span>
               </button>
@@ -105,14 +134,34 @@ function AppContent() {
       )}
 
       <Routes>
-        <Route path="/" element={!session ? <AuthPage /> : <Navigate to="/home" />} />
-        <Route path="/home" element={<Dashboard session={session} workspace={workspace} />} />
-        <Route path="/updates" element={<UpdatesPage session={session} isAdmin={isAdmin} />} />
-        <Route path="/profile/*" element={session ? <ProfileHub session={session} /> : <Navigate to="/" />} />
-        <Route path="*" element={<Navigate to="/home" />} />
+        {/* If user is already authenticated, landing on '/' redirects straight to '/home' */}
+        <Route 
+          path="/" 
+          element={session ? <Navigate to="/home" replace /> : <AuthPage />} 
+        />
+        <Route 
+          path="/home" 
+          element={<Dashboard session={session} workspace={workspace} />} 
+        />
+        <Route 
+          path="/updates" 
+          element={<UpdatesPage session={session} isAdmin={isAdmin} />} 
+        />
+        <Route 
+          path="/profile/*" 
+          element={session ? <ProfileHub session={session} /> : <Navigate to="/" replace />} 
+        />
+        {/* Catch-all route */}
+        <Route path="*" element={<Navigate to={session ? "/home" : "/"} replace />} />
       </Routes>
     </div>
   );
 }
 
-export default function App() { return <Router><AppContent /></Router>; }
+export default function App() { 
+  return (
+    <Router>
+      <AppContent />
+    </Router>
+  ); 
+}
