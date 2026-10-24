@@ -202,6 +202,7 @@ export default function Dashboard({ session }) {
       setLoading(true); setResults([]); setCurrentPage(1); setErrorMsg('');
       const activeTotalBudget = Math.round((calculateNetMonthly(Number(searchParams.get('salary'))) + (searchParams.get('move') === 'couple' ? calculateNetMonthly(Number(searchParams.get('partner'))) : 0)) * (Number(searchParams.get('budget')) / 100));
       try {
+        // Now pointing strictly to Vercel's native /api router
         const res = await fetch(`/api/compute`, {
           method: 'POST', headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ destination: targetDest, days_per_week: Number(searchParams.get('days')) || 3, property_type: searchParams.get('type'), total_budget: activeTotalBudget })
@@ -212,7 +213,7 @@ export default function Dashboard({ session }) {
         else setResults(data.hubs);
       } catch (err) { 
         console.error(err);
-        setErrorMsg('Network Connection Error: Frontend cannot reach the backend server at /api/compute. Check if the server is running.'); 
+        setErrorMsg('Network Connection Error: Frontend cannot reach the backend server. Check if your backend is running or configured correctly in Vercel.'); 
       } finally { setLoading(false); }
     };
     runCompute();
@@ -376,7 +377,6 @@ export default function Dashboard({ session }) {
             <button onClick={() => setShowSearchForm(true)} className="bg-slate-800 hover:bg-slate-700 border border-slate-600 text-white text-xs font-bold py-2 px-4 rounded-lg transition">⚙️ Modify Search</button>
           </div>
 
-          {/* VISIBLE ERROR BOX - This shows you exactly why the search failed instead of a blank screen */}
           {errorMsg && (
             <div className="bg-red-500/10 border border-red-500/50 p-6 rounded-2xl text-center shadow-lg mt-4 mb-8">
               <span className="text-3xl mb-2 block">⚠️</span>
