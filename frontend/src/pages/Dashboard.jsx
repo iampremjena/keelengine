@@ -1,8 +1,8 @@
-import React, { useState, useEffect } from 'react';
-import { useSearchParams, useNavigate } from 'react-router-dom';
+import React, { useState, useEffect, useRef } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { supabase } from '../supabaseClient';
 import AlertModal from '../components/AlertModal';
-import { MapContainer, TileLayer, Marker } from 'react-leaflet';
+import { MapContainer, TileLayer, Marker, Popup } from 'react-leaflet';
 import L from 'leaflet';
 import markerIcon from 'leaflet/dist/images/marker-icon.png';
 import markerShadow from 'leaflet/dist/images/marker-shadow.png';
@@ -10,105 +10,159 @@ import markerShadow from 'leaflet/dist/images/marker-shadow.png';
 let DefaultIcon = L.icon({ iconUrl: markerIcon, shadowUrl: markerShadow, iconSize: [25, 41], iconAnchor: [12, 41] });
 L.Marker.prototype.options.icon = DefaultIcon;
 
-const HARDCODED_AMENITIES = {
-  "Abbey Wood": ["Sainsbury's Local", "The Abbey Arms", 72], "Acton": ["Waitrose", "The George & Dragon", 78],
-  "Aldgate": ["Tesco Express", "The Hoop and Grapes", 81], "Angel": ["Waitrose", "The Angelic", 86],
-  "Archway": ["Aldi", "St John's Tavern", 76], "Balham": ["Waitrose", "The Bedford", 84],
-  "Bankside": ["M&S Food", "The Anchor Bankside", 85], "Barbican": ["Waitrose", "The Jugged Hare", 88],
-  "Barking": ["Asda", "The Barking Dog", 68], "Barnes": ["M&S Food", "The Sun Inn", 92],
-  "Barnet": ["Waitrose", "The Mitre", 83], "Battersea": ["Waitrose", "The Woodman", 86],
-  "Bayswater": ["Waitrose", "The Churchill Arms", 84], "Beckenham": ["Waitrose", "The George Inn", 82],
-  "Beckton": ["Asda", "The Tollgate", 69], "Belgravia": ["Waitrose", "The Thomas Cubitt", 94],
-  "Belsize Park": ["Budgens", "The Washington", 88], "Bermondsey": ["Sainsbury's Local", "The Woolpack", 81],
-  "Bethnal Green": ["Tesco Express", "The Sun Tavern", 73], "Bexleyheath": ["Asda", "The Golden Lion", 77],
-  "Blackheath": ["M&S Food", "The Princess of Wales", 86], "Bloomsbury": ["Waitrose", "The Museum Tavern", 85],
-  "Bow": ["Tesco Express", "The Bow Bells", 71], "Brentford": ["Sainsbury's", "The Magpie and Crown", 75],
-  "Brixton": ["Tesco Superstore", "The Trinity Arms", 70], "Brockley": ["Sainsbury's Local", "The Wickham Arms", 76],
-  "Bromley": ["Waitrose", "The Partridge", 81], "Camberwell": ["Morrisons", "The Camberwell Arms", 72],
-  "Camden Town": ["Sainsbury's", "The Hawley Arms", 74], "Canary Wharf": ["Waitrose", "The Gun", 89],
-  "Canning Town": ["Co-op Food", "The Durham Arms", 68], "Catford": ["Tesco", "The Catford Bridge Tavern", 70],
-  "Chelsea": ["M&S Food", "The Builders Arms", 93], "Chingford": ["Co-op Food", "The Royal Oak", 78],
-  "Chiswick": ["Waitrose", "The George IV", 88], "Clapham": ["Waitrose", "The Falcon", 83],
-  "Clerkenwell": ["Waitrose", "The Eagle", 85], "Colindale": ["Asda", "The Chandos Arms", 74],
-  "Covent Garden": ["Tesco Express", "The Lamb & Flag", 84], "Cricklewood": ["Co-op Food", "The Crown", 71],
-  "Crouch End": ["Waitrose", "The Queens", 86], "Croydon": ["Waitrose", "The Dog & Bull", 69],
-  "Crystal Palace": ["Sainsbury's", "The Westow House", 78], "Dalston": ["Sainsbury's", "The Farr's", 72],
-  "Deptford": ["Tesco Express", "The Dog & Bell", 71], "Dulwich": ["M&S Food", "The Crown & Greyhound", 89],
-  "Ealing": ["Waitrose", "The North Star", 85], "Earls Court": ["M&S Food", "The Blackbird", 83],
-  "East Ham": ["Tesco Express", "The Denmark Arms", 67], "Edgware": ["Sainsbury's", "The Change of Horses", 75],
-  "Elephant and Castle": ["Tesco Express", "The Elephant & Castle", 70], "Eltham": ["Sainsbury's", "The Rusty Bucket", 76],
-  "Enfield": ["Waitrose", "The Crown and Horseshoes", 79], "Farringdon": ["Tesco Express", "The Betsey Trotwood", 84],
-  "Finchley": ["Waitrose", "The Catcher In The Rye", 82], "Finsbury Park": ["Lidl", "The Faltering Fullback", 73],
-  "Forest Gate": ["Co-op Food", "The Forest Tavern", 72], "Forest Hill": ["Sainsbury's", "The Capitol", 77],
-  "Fulham": ["Waitrose", "The White Horse", 87], "Golders Green": ["Sainsbury's", "The Old Bull & Bush", 84],
-  "Greenwich": ["M&S Food", "The Cutty Sark", 86], "Hackney": ["Tesco Express", "The Pembury Tavern", 74],
-  "Hammersmith": ["Waitrose", "The Blue Anchor", 83], "Hampstead": ["Waitrose", "The Holly Bush", 92],
-  "Harrow": ["Tesco Superstore", "The Castle", 79], "Highbury": ["Waitrose", "The Highbury Barn", 85],
-  "Highgate": ["M&S Food", "The Flask", 90], "Holborn": ["Waitrose", "The Princess Louise", 83],
-  "Holloway": ["Waitrose", "The Swimmer at the Grafton", 75], "Hornchurch": ["Sainsbury's", "The Fatling", 80],
-  "Hounslow": ["Asda", "The Moon Under Water", 68], "Ilford": ["Sainsbury's", "The Great Spoon of Ilford", 67],
-  "Isle of Dogs": ["Asda", "The Ferry House", 82], "Islington": ["Waitrose", "The Drapers Arms", 85],
-  "Kennington": ["Tesco Express", "The Tommyfield", 78], "Kensington": ["Whole Foods", "The Churchill Arms", 91],
-  "Kentish Town": ["Sainsbury's", "The Pineapple", 79], "Kew": ["Tesco Express", "The Greyhound", 93],
-  "Kilburn": ["Aldi", "The Black Lion", 72], "King's Cross": ["Waitrose", "The Parcel Yard", 79],
-  "Kingston upon Thames": ["Waitrose", "The Ram", 86], "Lewisham": ["Tesco Superstore", "The Fox & Firkin", 71],
-  "Leyton": ["Asda", "The Leyton Technical", 72], "Marylebone": ["Waitrose", "The Barley Mow", 89],
-  "Mayfair": ["M&S Food", "The Audley", 95], "Notting Hill": ["M&S Food", "The Elgin", 88],
-  "Orpington": ["Tesco Extra", "The Maxwell", 81], "Paddington": ["Waitrose", "The Victoria", 82],
-  "Peckham": ["Morrisons", "The Prince of Peckham", 71], "Pimlico": ["Sainsbury's", "The Marquis of Westminster", 86],
-  "Poplar": ["Co-op Food", "The Ledger Building", 70], "Putney": ["Waitrose", "The Half Moon", 88],
-  "Richmond": ["Waitrose", "The White Cross", 94], "Romford": ["Asda", "The Golden Lion", 73],
-  "Rotherhithe": ["Co-op Food", "The Mayflower", 83], "Shepherd's Bush": ["Waitrose", "The Defector's Weld", 76],
-  "Shoreditch": ["Co-op Food", "The Ten Bells", 73], "Soho": ["Tesco Express", "The French House", 82],
-  "South Kensington": ["Waitrose", "The Anglesea Arms", 91], "Southwark": ["Tesco Express", "The Founders Arms", 81],
-  "Stratford": ["Waitrose", "The Cart and Horses", 74], "Streatham": ["Aldi", "The Rabbit Hole", 75],
-  "Surbiton": ["Waitrose", "The Antelope", 87], "Sutton": ["Sainsbury's", "The Cock & Bull", 80],
-  "Tooting": ["Aldi", "The Castle", 77], "Tottenham": ["Asda", "The Antwerp Arms", 68],
-  "Twickenham": ["Waitrose", "The Barmy Arms", 89], "Vauxhall": ["Sainsbury's", "The Black Dog", 79],
-  "Walthamstow": ["Lidl", "The Bell", 76], "Wandsworth": ["Waitrose", "The Ship", 85],
-  "Waterloo": ["Sainsbury's Local", "The Fire Station", 81], "Wembley": ["Asda", "The White Horse", 71],
-  "Westminster": ["Waitrose", "The Red Lion", 86], "Whitechapel": ["Sainsbury's", "The Blind Beggar", 70],
-  "Wimbledon": ["Waitrose", "The Dog & Fox", 91], "Woolwich": ["Tesco Extra", "The Dial Arch", 73]
-};
+const LONDON_AREAS = [ "Abbey Wood", "Acton", "Aldgate", "Angel", "Archway", "Balham", "Bank", "Bankside", "Barbican", "Barking", "Barnes", "Barnet", "Battersea", "Bayswater", "Beckenham", "Beckton", "Belgravia", "Belsize Park", "Bermondsey", "Bethnal Green", "Bexleyheath", "Blackheath", "Bloomsbury", "Bow", "Brentford", "Brixton", "Brockley", "Bromley", "Camberwell", "Camden Town", "Canary Wharf", "Canning Town", "Catford", "Chelsea", "Chingford", "Chiswick", "Clapham", "Clerkenwell", "Colindale", "Covent Garden", "Cricklewood", "Crouch End", "Croydon", "Crystal Palace", "Dalston", "Deptford", "Dulwich", "Ealing", "Earls Court", "East Ham", "Edgware", "Elephant and Castle", "Eltham", "Enfield", "Farringdon", "Finchley", "Finsbury Park", "Forest Gate", "Forest Hill", "Fulham", "Golders Green", "Greenwich", "Hackney", "Hammersmith", "Hampstead", "Harrow", "Highbury", "Highgate", "Holborn", "Holloway", "Hornchurch", "Hounslow", "Ilford", "Isle of Dogs", "Islington", "Kennington", "Kensington", "Kentish Town", "Kew", "Kilburn", "King's Cross", "Kingston", "Lewisham", "Leyton", "Liverpool Street", "London Bridge", "Marylebone", "Mayfair", "Notting Hill", "Orpington", "Paddington", "Peckham", "Pimlico", "Poplar", "Putney", "Richmond", "Romford", "Rotherhithe", "Shepherd's Bush", "Shoreditch", "Soho", "South Kensington", "Southwark", "Stratford", "Streatham", "Surbiton", "Sutton", "Tooting", "Tottenham", "Twickenham", "Vauxhall", "Victoria", "Walthamstow", "Wandsworth", "Waterloo", "Wembley", "Westminster", "Whitechapel", "Wimbledon", "Woolwich" ];
 
-function NeighborhoodMap({ lat, lng }) {
-  if (!lat || !lng) return <div className="w-full h-40 rounded-2xl bg-slate-800/50 border border-slate-700/50 flex items-center justify-center mb-5"><span className="text-slate-500 text-xs font-mono">Map Data Syncing...</span></div>;
+const BONNIE_QUICK_PROMPTS = [
+  "How do I open a UK Bank account before moving?",
+  "What is a Right-to-Rent check?",
+  "How much upfront cash do I legally need to move in?"
+];
+
+function NeighborhoodMap({ lat, lng, neighborhood, targetDestination }) {
+  if (!lat || !lng) return null;
+  const googleMapsUrl = `https://www.google.com/maps/dir/?api=1&origin=${lat},${lng}&destination=${encodeURIComponent(targetDestination)}&travelmode=transit`;
+
   return (
-    <div className="w-full h-40 rounded-2xl overflow-hidden border border-slate-700/50 mb-5 z-0 relative">
+    <div className="w-full h-40 sm:h-48 rounded-2xl overflow-hidden border border-slate-700/50 mb-4 sm:mb-5 relative z-0">
       <MapContainer center={[lat, lng]} zoom={13} zoomControl={false} attributionControl={false} style={{ height: '100%', width: '100%' }}>
         <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
-        <Marker position={[lat, lng]} />
+        <Marker position={[lat, lng]}>
+          <Popup>
+            <div className="text-center p-1">
+              <strong className="block text-slate-900 font-bold">{neighborhood}</strong>
+              <a href={googleMapsUrl} target="_blank" rel="noreferrer" className="text-xs text-blue-600 font-bold underline block mt-1">Route to {targetDestination} ➔</a>
+            </div>
+          </Popup>
+        </Marker>
       </MapContainer>
     </div>
   );
 }
 
 export default function Dashboard({ session }) {
-  const navigate = useNavigate();
-  useEffect(() => { document.title = "KeelEngine | Search"; }, []);
-
   const [searchParams, setSearchParams] = useSearchParams();
+  const hasSearched = searchParams.has('destination');
+  const [showSearchForm, setShowSearchForm] = useState(!hasSearched);
+  const [searchMode, setSearchMode] = useState('manual');
   
   const [moveType, setMoveType] = useState(searchParams.get('move') || 'solo');
   const [grossSalary, setGrossSalary] = useState(Number(searchParams.get('salary')) || 50000);
-  const [partnerSalary, setPartnerSalary] = useState(Number(searchParams.get('partner')) || 50000);
+  const [partnerSalary, setPartnerSalary] = useState(Number(searchParams.get('partner')) || 0);
   const [budgetSlider, setBudgetSlider] = useState(Number(searchParams.get('budget')) || 40);
   const [officeDays, setOfficeDays] = useState(Number(searchParams.get('days')) || 3);
-  const [postcode, setPostcode] = useState(searchParams.get('postcode') || '');
+  const [propertyType, setPropertyType] = useState(searchParams.get('type') || '1-Bed Private Flat');
+  const [hasUKCredit, setHasUKCredit] = useState(searchParams.get('credit') !== 'false');
   
+  const [officeLocation, setOfficeLocation] = useState(searchParams.get('destination') || '');
+  const [locationSuggestions, setLocationSuggestions] = useState([]);
+  const [showSuggestions, setShowSuggestions] = useState(false);
+  const [aiPromptText, setAiPromptText] = useState('');
+
   const [loading, setLoading] = useState(false);
   const [results, setResults] = useState([]);
   const [errorMsg, setErrorMsg] = useState('');
   const [currentPage, setCurrentPage] = useState(1);
   const itemsPerPage = 5;
+  const [savedNeighborhoods, setSavedNeighborhoods] = useState([]);
 
+  const [activeTooltip, setActiveTooltip] = useState(null);
+  const [listingsModal, setListingsModal] = useState({ isOpen: false, neighborhood: '', isShared: false });
   const [alertConfig, setAlertConfig] = useState({ isOpen: false, title: '', message: '', type: 'success' });
-  const [showSurveyModal, setShowSurveyModal] = useState(false);
-  
+
+  const [isBonnieOpen, setIsBonnieOpen] = useState(false);
+  const [chatMessages, setChatMessages] = useState([{ role: 'assistant', content: "Hi! I'm Bonnie 👋 Need help with visas, NHS registration, or TfL costs? I'm your relocation expert. How can I help?" }]);
+  const [chatInput, setChatInput] = useState('');
+  const [chatLoading, setChatLoading] = useState(false);
+  const chatScrollRef = useRef(null);
+
+  const [isListening, setIsListening] = useState(false);
+  const [isSpeaking, setIsSpeaking] = useState(false);
+  const audioRef = useRef(null);
+
   const showAlert = (title, message, type) => setAlertConfig({ isOpen: true, title, message, type });
+  const toggleTooltip = (id) => setActiveTooltip(activeTooltip === id ? null : id);
 
-  const hasSearched = searchParams.has('postcode');
+  useEffect(() => {
+    if (session?.user?.id) fetchSavedSuggestions();
+  }, [session]);
 
+  const fetchSavedSuggestions = async () => {
+    try {
+      const { data } = await supabase.from('saved_suggestions').select('neighborhood').eq('user_id', session.user.id);
+      if (data) setSavedNeighborhoods(data.map(item => item.neighborhood));
+    } catch (e) {}
+  };
+
+  const handleSaveSuggestion = async (hub) => {
+    if (!session) return showAlert("Account Required", "Please create an account to save suggestions.", "error");
+    if (savedNeighborhoods.includes(hub.Neighborhood)) return showAlert("Already Saved", `${hub.Neighborhood} is already saved.`, "info");
+    try {
+      const { error } = await supabase.from('saved_suggestions').insert([{ user_id: session.user.id, neighborhood: hub.Neighborhood, destination: activeDestination, property_type: searchParams.get('type') || propertyType, rent_range: hub.Rent_Range, commute_duration: hub.Commute_Duration, details: hub }]);
+      if (error) throw error;
+      setSavedNeighborhoods([...savedNeighborhoods, hub.Neighborhood]);
+      showAlert("Saved!", `${hub.Neighborhood} saved to your profile.`, "success");
+    } catch (e) { showAlert("Save Failed", e.message, "error"); }
+  };
+
+  const playTTS = async (text) => {
+    setIsSpeaking(true);
+    try {
+      const cleanText = text.replace(/<[^>]*>?/gm, ''); 
+      const res = await fetch('/api/tts', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ text: cleanText }) });
+      if (!res.ok) throw new Error('TTS failed');
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const audio = new Audio(url);
+      audioRef.current = audio;
+      audio.onended = () => setIsSpeaking(false);
+      audio.play();
+    } catch (e) { setIsSpeaking(false); }
+  };
+  const stopSpeaking = () => { if (audioRef.current) { audioRef.current.pause(); audioRef.current.currentTime = 0; } setIsSpeaking(false); };
+
+  const handleVoiceInput = () => {
+    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+    if (!SpeechRecognition) return showAlert("Not Supported", "Speech recognition is not supported in this browser.", "error");
+    const recognition = new SpeechRecognition();
+    recognition.lang = 'en-GB';
+    recognition.interimResults = false;
+    recognition.onstart = () => setIsListening(true);
+    recognition.onend = () => setIsListening(false);
+    recognition.onerror = () => setIsListening(false);
+    recognition.onresult = async (event) => {
+      const transcript = event.results[0][0].transcript;
+      setChatInput(transcript);
+      if (!isBonnieOpen) setIsBonnieOpen(true);
+      await sendChatMessage(transcript, true);
+    };
+    recognition.start();
+  };
+
+  const sendChatMessage = async (msgText, isVoice = false) => {
+    if (!msgText.trim() || chatLoading) return;
+    const updatedMessages = [...chatMessages, { role: 'user', content: msgText.trim() }];
+    setChatMessages(updatedMessages); setChatInput(''); setChatLoading(true);
+    try {
+      const res = await fetch('/api/chat', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ messages: updatedMessages }) });
+      const data = await res.json();
+      if (data.reply) { 
+        setChatMessages([...updatedMessages, { role: 'assistant', content: data.reply }]); 
+        if (isVoice) await playTTS(data.reply); 
+      }
+    } catch (err) { setChatMessages([...updatedMessages, { role: 'assistant', content: "Connection issue." }]); } finally { setChatLoading(false); }
+  };
+
+  useEffect(() => { if (chatScrollRef.current) chatScrollRef.current.scrollTop = chatScrollRef.current.scrollHeight; }, [chatMessages, isBonnieOpen]);
+
+  const handleLocationType = (e) => {
+    const val = e.target.value; setOfficeLocation(val);
+    if (val.length > 0) {
+      const filtered = LONDON_AREAS.filter(area => area.toLowerCase().includes(val.toLowerCase())).slice(0, 5);
+      setLocationSuggestions(filtered); setShowSuggestions(filtered.length > 0);
+    } else setShowSuggestions(false);
+  };
+  const selectSuggestion = (area) => { setOfficeLocation(area); setShowSuggestions(false); };
+  
   const calculateNetMonthly = (gross) => {
     let tax = 0;
     if (gross > 12570) {
@@ -119,249 +173,319 @@ export default function Dashboard({ session }) {
     return (gross - tax) / 12;
   };
 
-  const net1 = calculateNetMonthly(grossSalary);
-  const net2 = moveType === 'couple' ? calculateNetMonthly(partnerSalary) : 0;
-  const computedTotalBudget = Math.round((net1 + net2) * (budgetSlider / 100));
-
-  const triggerSearch = (e) => {
+  const triggerManualSearch = (e) => {
     e.preventDefault();
-    if (!postcode.trim()) return;
-    setSearchParams({ postcode: postcode.toUpperCase(), move: moveType, salary: grossSalary, partner: partnerSalary, budget: budgetSlider, days: officeDays });
+    const matchedArea = LONDON_AREAS.find(a => a.toLowerCase() === officeLocation.trim().toLowerCase());
+    if (!matchedArea) return showAlert("Invalid Location", "Please select a valid London destination.", "error");
+    setShowSuggestions(false); setShowSearchForm(false);
+    setSearchParams({ destination: matchedArea, move: moveType, salary: grossSalary, partner: partnerSalary, budget: budgetSlider, days: officeDays, type: propertyType, credit: hasUKCredit });
   };
-
-  const clearSearch = () => {
-    setSearchParams({});
-    setResults([]);
-    setCurrentPage(1);
+  
+  const handleAiSubmit = (e) => {
+    e.preventDefault();
+    if (!aiPromptText.trim()) return showAlert("Input Required", "Please describe your ideal property setup.", "error");
+    const matchedArea = LONDON_AREAS.find(area => aiPromptText.toLowerCase().includes(area.toLowerCase()));
+    if (!matchedArea) return showAlert("Location Not Found", "Please include a valid London area.", "error");
+    setShowSearchForm(false);
+    setSearchParams({ destination: matchedArea, move: moveType, salary: grossSalary, partner: partnerSalary, budget: budgetSlider, days: officeDays, type: propertyType, credit: hasUKCredit });
   };
 
   useEffect(() => {
-    const pc = searchParams.get('postcode');
-    if (!pc) return;
-
+    const targetDest = searchParams.get('destination');
+    if (!targetDest) return;
     const runCompute = async () => {
-      setLoading(true); setErrorMsg(''); setResults([]); setCurrentPage(1);
-
-      supabase.from('search_analytics').insert([{ 
-        gross_salary: Number(searchParams.get('salary')), 
-        office_postcode: pc.toUpperCase() 
-      }]).then();
-
-      if (session?.user) {
-        await supabase.from('profiles').update({ move_type: searchParams.get('move'), gross_salary: searchParams.get('salary'), budget_percent: searchParams.get('budget'), office_postcode: pc }).eq('id', session.user.id);
-        
-        // 🛡️ FIRST-TIME SEARCH POPUP LOGIC
-        const hasPrompted = localStorage.getItem(`survey_prompted_${session.user.id}`);
-        if (!hasPrompted) {
-          localStorage.setItem(`survey_prompted_${session.user.id}`, 'true');
-          // Wait 3 seconds so they can see their results loading before popping the modal
-          setTimeout(() => {
-            setShowSurveyModal(true);
-          }, 3000);
-        }
-      }
-
+      setLoading(true); setResults([]); setCurrentPage(1); setErrorMsg('');
+      const activeTotalBudget = Math.round((calculateNetMonthly(Number(searchParams.get('salary'))) + (searchParams.get('move') === 'couple' ? calculateNetMonthly(Number(searchParams.get('partner'))) : 0)) * (Number(searchParams.get('budget')) / 100));
       try {
-        const res = await fetch(`https://keelengine-backend.onrender.com/api/compute`, {
+        const res = await fetch(`/api/compute`, {
           method: 'POST', headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ postcode: pc, days_per_week: Number(searchParams.get('days')), property_type: "1-Bed Private Flat", total_budget: computedTotalBudget })
+          body: JSON.stringify({ destination: targetDest, days_per_week: Number(searchParams.get('days')) || 3, property_type: searchParams.get('type'), total_budget: activeTotalBudget })
         });
-
-        if (!res.ok) throw new Error("The computation server is waking up. Please wait 10 seconds and try clicking search again.");
-        
         const data = await res.json();
-        
         if (data.error) setErrorMsg(data.error);
-        else if (data.is_outside_london) setErrorMsg(`Your office is in ${data.message}. We highly recommend checking properties locally instead of commuting! 🚂`);
-        else if (!data.hubs || data.hubs.length === 0) setErrorMsg(`⚠️ No neighborhoods match a budget of £${computedTotalBudget.toLocaleString()}. Try raising your Max Rent Allowance.`);
+        else if (!data.hubs || data.hubs.length === 0) setErrorMsg(`⚠️ No neighborhoods match.`);
         else setResults(data.hubs);
-      } catch (err) { 
-        setErrorMsg(err.message || 'Connection error. Please try again.'); 
-      } finally { setLoading(false); }
+      } catch (err) { setErrorMsg('Connection error.'); } finally { setLoading(false); }
     };
-
     runCompute();
-  }, [searchParams, session]);
+  }, [searchParams]);
 
-  const saveNeighborhoodToDB = async (hubName, hubOutcode, hubRent, hubScore) => {
-    if (!session) return showAlert("Not Logged In", "Please sign in to save properties.", "error");
-    try {
-      const { error } = await supabase.from('saved_properties').insert([{ user_id: session.user.id, neighborhood: hubName, outcode: hubOutcode, rent_range: hubRent, suggestion_score: hubScore }]);
-      if (error) throw error;
-      showAlert("Saved!", `${hubName} added to your Profile.`, "success");
-    } catch (e) { showAlert("Error", "Could not save property.", "error"); }
-  };
-
-  const indexOfLastItem = currentPage * itemsPerPage;
-  const currentItems = (results || []).slice(indexOfLastItem - itemsPerPage, indexOfLastItem);
-  const totalPages = Math.ceil((results || []).length / itemsPerPage);
+  const activeDestination = searchParams.get('destination') || officeLocation;
+  const isUKCreditActive = searchParams.get('credit') !== 'false';
+  const currentItems = results.slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage);
+  const totalPages = Math.ceil(results.length / itemsPerPage) || 1;
 
   return (
-    <div className="max-w-7xl mx-auto px-4 py-8 min-h-[85vh] flex flex-col justify-start relative z-10">
+    <div className="max-w-7xl mx-auto px-4 sm:px-6 py-6 sm:py-8 min-h-[85vh] flex flex-col">
       <AlertModal {...alertConfig} onClose={() => setAlertConfig({ ...alertConfig, isOpen: false })} />
-      
-      {/* 🛡️ PERSISTENT TOP SURVEY BANNER */}
-      <div className="w-full bg-emerald-950/40 border border-emerald-500/30 rounded-2xl p-5 mb-8 flex flex-col sm:flex-row justify-between items-center gap-4 shadow-xl">
-         <div className="text-center sm:text-left">
-           <h3 className="text-emerald-400 font-black text-lg tracking-tight">Help us improve KeelEngine! 🚀</h3>
-           <p className="text-sm text-slate-300 mt-1">Take our 60-second survey and unlock a <strong className="text-white">2-Month LinkedIn Premium trial</strong>.</p>
-         </div>
-         <button onClick={() => navigate('/about')} className="bg-emerald-600 hover:bg-emerald-500 text-white font-bold py-3 px-8 rounded-xl transition text-sm shadow-md whitespace-nowrap">
-           Take the Survey
-         </button>
-      </div>
 
-      {/* 🛡️ FIRST-SEARCH POPUP MODAL */}
-      {showSurveyModal && (
+      {/* DYNAMIC LISTINGS MODAL */}
+      {listingsModal.isOpen && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-950/80 backdrop-blur-md px-4 animate-fadeIn">
-           <div className="bg-slate-900 border border-emerald-500/50 p-8 rounded-3xl shadow-2xl max-w-md w-full text-center">
-              <span className="text-6xl block mb-4">🎁</span>
-              <h2 className="text-2xl font-black text-white mb-2 tracking-tight">Claim Your Reward!</h2>
-              <p className="text-slate-300 text-sm mb-8 leading-relaxed">
-                Since you've run your first search, we'd love to hear your thoughts. Complete a quick 60-second survey to help us optimize our dataset, and we'll give you <strong>2 Months of LinkedIn Premium</strong> for free!
-              </p>
-              <div className="flex flex-col gap-3">
-                <button onClick={() => navigate('/about')} className="w-full bg-emerald-600 hover:bg-emerald-500 text-white font-bold py-4 rounded-xl shadow-lg transition tracking-wide text-sm">
-                  Take Survey Now
-                </button>
-                <button onClick={() => setShowSurveyModal(false)} className="w-full bg-slate-800 hover:bg-slate-700 border border-slate-600 text-slate-300 font-bold py-4 rounded-xl transition text-sm">
-                  Maybe Later
-                </button>
+          <div className="bg-slate-900 border border-emerald-500/50 p-5 sm:p-6 md:p-8 rounded-3xl shadow-2xl max-w-2xl w-full">
+            <div className="flex justify-between items-center mb-4">
+              <h3 className="text-lg sm:text-xl font-bold text-white flex items-center gap-2"><span>🏘️</span> Portals for {listingsModal.neighborhood}</h3>
+              <button onClick={() => setListingsModal({ ...listingsModal, isOpen: false })} className="text-slate-400 hover:text-white font-bold text-base px-2">✕</button>
+            </div>
+            <div className="space-y-3 mb-6">
+              <div className="text-center py-6 bg-slate-950 rounded-xl border border-slate-800 space-y-4">
+                <p className="text-slate-400 text-xs px-2">Select a portal to view live 2026 listings matching your budget:</p>
+                <div className={`grid grid-cols-1 ${listingsModal.isShared ? 'sm:grid-cols-3' : 'sm:grid-cols-2'} gap-3 px-4`}>
+                  {listingsModal.isShared && (
+                    <a href={`https://www.spareroom.co.uk/flatshare/london/${encodeURIComponent(listingsModal.neighborhood.replace(/\s+/g, '-').toLowerCase())}`} target="_blank" rel="noreferrer" className="bg-purple-600 hover:bg-purple-500 text-white font-bold text-xs px-3 py-3 rounded-xl block text-center shadow-md transition">SpareRoom ➔</a>
+                  )}
+                  <a href={`https://www.zoopla.co.uk/to-rent/property/${encodeURIComponent(listingsModal.neighborhood.replace(/\s+/g, '-').toLowerCase())}/`} target="_blank" rel="noreferrer" className="bg-blue-600 hover:bg-blue-500 text-white font-bold text-xs px-3 py-3 rounded-xl block text-center shadow-md transition">Zoopla ➔</a>
+                  <a href={`https://www.openrent.co.uk/properties-to-rent/${encodeURIComponent(listingsModal.neighborhood.replace(/\s+/g, '-').toLowerCase())}-london`} target="_blank" rel="noreferrer" className="bg-amber-600 hover:bg-amber-500 text-white font-bold text-xs px-3 py-3 rounded-xl block text-center shadow-md transition">OpenRent ➔</a>
+                </div>
               </div>
-           </div>
+            </div>
+            <button onClick={() => setListingsModal({ ...listingsModal, isOpen: false })} className="w-full bg-slate-800 hover:bg-slate-700 text-slate-300 font-bold py-3 rounded-xl text-xs transition">Close Window</button>
+          </div>
         </div>
       )}
 
-      <div className={`flex flex-col lg:flex-row gap-8 transition-all duration-700 ease-in-out ${!hasSearched ? 'justify-center items-center' : 'items-start'}`}>
-        
-        <div className={`w-full transition-all duration-700 ${!hasSearched ? 'max-w-xl' : 'lg:w-1/3 sticky top-8'}`}>
-          <div className="glass p-8 rounded-3xl shadow-2xl border border-emerald-900/30">
-            <h2 className="text-3xl font-black text-white mb-6 text-center">Tell Us About You</h2>
-            <form onSubmit={triggerSearch} className="space-y-6">
-              <div><label className="block text-sm text-slate-300 mb-2">Who is moving?</label><select value={moveType} onChange={(e) => setMoveType(e.target.value)} className="w-full bg-slate-900 border border-slate-700 rounded-xl px-4 py-3 text-white outline-none focus:border-emerald-500"><option value="solo">Just Me</option><option value="couple">A Couple</option></select></div>
-              <div><div className="flex justify-between mb-2"><label className="text-sm text-slate-300">Your Yearly Salary</label><span className="text-emerald-400 font-bold">£{grossSalary.toLocaleString()}</span></div><input type="range" min="10000" max="200000" step="1000" value={grossSalary} onChange={(e) => setGrossSalary(Number(e.target.value))} className="w-full" /></div>
-              {moveType === 'couple' && (<div><div className="flex justify-between mb-2"><label className="text-sm text-slate-300">Partner's Salary</label><span className="text-emerald-400 font-bold">£{partnerSalary.toLocaleString()}</span></div><input type="range" min="10000" max="200000" step="1000" value={partnerSalary} onChange={(e) => setPartnerSalary(Number(e.target.value))} className="w-full" /></div>)}
-              <div><div className="flex justify-between mb-2"><label className="text-sm text-slate-300">Max Rent Allowance</label><span className="text-white font-bold">{budgetSlider}%</span></div><input type="range" min="20" max="65" step="5" value={budgetSlider} onChange={(e) => setBudgetSlider(Number(e.target.value))} className="w-full" /></div>
-              
-              <div className="bg-slate-900/50 p-4 rounded-xl text-center"><p className="text-xs text-slate-400">Total Monthly Budget</p><p className="text-2xl text-emerald-400 font-black">£{computedTotalBudget.toLocaleString()}</p></div>
-              
-              <div className="border-t border-slate-700/50 pt-6">
-                <div className="flex justify-between mb-2"><label className="text-sm text-slate-300">Days in Office per Week</label><span className="text-blue-400 font-bold">{officeDays} {officeDays === 1 ? 'Day' : 'Days'}</span></div>
-                <input type="range" min="1" max="5" step="1" value={officeDays} onChange={(e) => setOfficeDays(Number(e.target.value))} className="w-full" />
+      {/* FLOATING BONNIE */}
+      <div className="fixed bottom-4 right-4 sm:bottom-6 sm:right-6 z-[200] flex items-center gap-2">
+        <button onClick={handleVoiceInput} className={`${isListening ? 'bg-red-600 animate-pulse' : 'bg-slate-800 hover:bg-slate-700'} text-white font-bold p-3.5 rounded-full shadow-2xl transition border border-slate-700 text-sm`} title="Talk to Bonnie">
+          {isListening ? '🎙️ Listening...' : '🎙️'}
+        </button>
+        {!isBonnieOpen ? (
+          <button onClick={() => setIsBonnieOpen(true)} className="bg-emerald-600 hover:bg-emerald-500 text-white font-bold px-4 py-3 sm:px-5 sm:py-4 rounded-full shadow-2xl transition flex items-center gap-2 border border-emerald-400/40 text-sm"><span>💬 Ask Bonnie</span></button>
+        ) : (
+          <div className="bg-slate-900 border border-emerald-500/40 rounded-3xl shadow-2xl w-[calc(100vw-2rem)] sm:w-96 flex flex-col h-[75vh] max-h-[560px] overflow-hidden animate-fadeIn">
+            <div className="bg-slate-950 p-4 border-b border-slate-800 flex justify-between items-center">
+              <div className="flex items-center gap-2"><div className="w-2.5 h-2.5 bg-emerald-400 rounded-full animate-pulse"></div><h4 className="text-white font-bold text-xs sm:text-sm">Bonnie — Relocation Expert</h4></div>
+              <div className="flex items-center gap-2">
+                {isSpeaking && <button onClick={stopSpeaking} className="text-[10px] text-amber-400 font-bold px-2 py-1 bg-amber-500/10 rounded-lg">🔇 Stop Audio</button>}
+                <button onClick={() => setIsBonnieOpen(false)} className="text-slate-400 hover:text-white font-bold px-2">✕</button>
               </div>
-              
-              <div><label className="block text-sm text-slate-300 mb-2">Where do you work? (Postcode)</label><input type="text" placeholder="e.g. EC1A 1BB" required value={postcode} onChange={(e) => setPostcode(e.target.value)} className="w-full bg-slate-900/50 border border-slate-700 rounded-xl px-4 py-4 font-mono text-white outline-none uppercase" /></div>
-              
-              <button type="submit" className="w-full bg-emerald-600 hover:bg-emerald-500 text-white font-bold py-4 rounded-xl transition shadow-lg tracking-wide">Find My Best Matches</button>
-            </form>
-          </div>
-        </div>
-        
-        {hasSearched && (
-          <div className="w-full lg:w-2/3 space-y-6">
-            
-            <div className="flex justify-between items-center bg-slate-900/50 p-4 rounded-2xl border border-slate-700/50 shadow-md">
-              <span className="text-slate-300 text-sm font-medium">Viewing results for <strong className="text-white">{searchParams.get('postcode')}</strong></span>
-              <button onClick={clearSearch} className="text-sm font-bold text-emerald-400 hover:text-emerald-300 bg-emerald-500/10 hover:bg-emerald-500/20 px-4 py-2 rounded-lg transition">Start New Search ↺</button>
             </div>
-
-            {loading && (
-              <div className="glass rounded-3xl py-32 text-center">
-                <div className="w-10 h-10 border-4 border-emerald-500 border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
-                <p className="text-slate-400">Searching London for your perfect neighborhoods...</p>
-              </div>
-            )}
-            
-            {errorMsg && !loading && (
-              <div className="p-6 glass rounded-3xl border border-red-900/30 text-amber-400 text-center font-medium">{errorMsg}</div>
-            )}
-            
-            {!loading && currentItems.map((hub, idx) => {
-              const lat = hub.Latitude || hub.latitude;
-              const lng = hub.Longitude || hub.longitude;
-              const name = hub.Neighborhood || hub.neighborhood || "Unknown";
-              const outcode = hub.Station_Outcode || hub.outcode || "--";
-              const borough = hub.Borough || hub.borough || "Greater London";
-              const score = hub.Suggestion_Score || hub.suggestion_score || 0;
-              const duration = hub.Commute_Duration || hub.duration || 0;
-              const rent = hub.Rent_Range || hub.rent_range || "£--";
-              
-              const commuteRoute = hub.Line_Route || hub.line_route || "Standard Route";
-              const singleFareVal = parseFloat((hub.Single_Fare_Cost || hub.single_fare || "0").toString().replace('£', ''));
-              const singleFareStr = `£${singleFareVal.toFixed(2)}`;
-              const monthlyDays = Number(searchParams.get('days')) || 3;
-              const monthlyFare = Math.round(singleFareVal * 2 * monthlyDays * 4.33);
-              const fareLog = hub.Fare_Log || hub.fare_log || "Standard transit fare structure.";
-              
-              const amenities = HARDCODED_AMENITIES[name] || ["Local Grocer", "The Red Lion", 75];
-              const grocery = `🛒 ${amenities[0]}`;
-              const pub = `🍻 ${amenities[1]}`;
-              const safety = amenities[2];
-
-              return (
-                <div key={idx} className="glass rounded-3xl p-6 shadow-xl border border-slate-700/40 hover:border-slate-500/50 transition">
-                  <div className="flex justify-between items-start mb-4">
-                    <div>
-                      <h3 className="text-2xl font-bold text-white">{name} <span className="text-sm text-slate-400">({outcode})</span></h3>
-                      <p className="text-sm text-slate-400">{borough}</p>
-                    </div>
-                    <div className="bg-slate-900/80 border border-slate-700 rounded-xl px-4 py-2 text-center">
-                      <span className="block text-[10px] text-slate-400 uppercase font-bold">Match Score</span>
-                      <span className="text-xl font-black text-emerald-400">{score}</span>
-                    </div>
-                  </div>
-                  
-                  <NeighborhoodMap lat={lat} lng={lng} />
-
-                  <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-5">
-                    
-                    <div className="bg-slate-900/40 p-3 rounded-xl border border-transparent relative group cursor-help hover:border-emerald-900/50 transition">
-                      <span className="block text-[10px] text-slate-400">Commute Time ⓘ</span>
-                      <strong className="text-white">{duration} mins</strong>
-                      <div className="hidden group-hover:block absolute bottom-full left-0 mb-2 w-56 bg-slate-800 border border-emerald-700 p-4 rounded-xl text-xs z-50 shadow-2xl">
-                        <span className="text-slate-200 block mb-1">Suggested Route:</span>
-                        <span className="text-emerald-400 font-medium text-[11px] leading-relaxed block">{commuteRoute}</span>
-                      </div>
-                    </div>
-
-                    <div className="bg-slate-900/40 p-3 rounded-xl border border-transparent"><span className="block text-[10px] text-emerald-400">Rent Cost</span><strong className="text-emerald-400 text-sm">{rent}</strong></div>
-                    
-                    <div className="bg-slate-900/40 p-3 rounded-xl border border-transparent relative group cursor-help hover:border-blue-900/50 transition">
-                      <span className="block text-[10px] text-blue-400">Transit/mo ⓘ</span>
-                      <strong className="text-blue-400">£{monthlyFare}</strong>
-                      <div className="hidden group-hover:block absolute bottom-full left-0 mb-2 w-56 bg-slate-800 border border-blue-700 p-4 rounded-xl text-xs z-50 shadow-2xl">
-                        <span className="text-slate-200 block mb-1">One-Way Single Fare: <b className="text-white">{singleFareStr}</b></span>
-                        <span className="text-slate-400 italic text-[10px] leading-relaxed block">{fareLog}</span>
-                      </div>
-                    </div>
-
-                    <div className="bg-slate-900/40 p-3 rounded-xl border border-transparent"><span className="block text-[10px] text-amber-400">Safety Rating</span><strong className="text-amber-400">{safety}/100</strong></div>
-                  </div>
-
-                  <div className="flex gap-4 text-xs font-mono text-slate-400 bg-slate-900/30 p-3 rounded-xl mb-5">
-                    <span>{grocery}</span>
-                    <span>|</span>
-                    <span>{pub}</span>
-                  </div>
-
-                  <div className="flex gap-4 items-center">
-                    <a href={`https://www.google.com/maps/dir/?api=1&origin=${lat},${lng}&destination=${postcode.toUpperCase()}&travelmode=transit`} target="_blank" rel="noreferrer" className="w-2/3 bg-blue-600 hover:bg-blue-500 rounded-xl py-3 text-center text-xs font-bold text-white transition shadow-lg">🗺️ See Commute on Google Maps</a>
-                    <button onClick={() => saveNeighborhoodToDB(name, outcode, rent, score)} className="w-1/3 bg-slate-800 hover:bg-slate-700 text-white font-bold py-3 rounded-xl text-xs transition border border-slate-600 shadow-lg">❤️ Save</button>
+            <div ref={chatScrollRef} className="flex-1 p-3 sm:p-4 overflow-y-auto space-y-4 text-xs">
+              {chatMessages.map((msg, idx) => (
+                <div key={idx} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
+                  <div className={`max-w-[85%] p-3.5 rounded-2xl ${msg.role === 'user' ? 'bg-emerald-600 text-white' : 'bg-slate-950 text-slate-200 border border-slate-800'}`}>
+                    <div dangerouslySetInnerHTML={{ __html: msg.content }} className="space-y-1.5 [&_ul]:list-disc [&_ul]:ml-4 [&_li]:mb-1 [&_strong]:text-emerald-400" />
                   </div>
                 </div>
-              );
-            })}
-
-            {!loading && results.length > 0 && (
-              <div className="flex justify-center items-center gap-6 mt-8 pb-10">
-                <button onClick={() => setCurrentPage(p => Math.max(1, p - 1))} disabled={currentPage === 1} className="px-5 py-3 bg-slate-800 disabled:opacity-30 rounded-xl text-white font-bold border border-slate-700 hover:border-emerald-500 transition shadow-lg">← Back</button>
-                <span className="text-slate-400 font-mono text-sm bg-slate-900/50 px-4 py-2 rounded-lg border border-slate-800">Page {currentPage} of {totalPages}</span>
-                <button onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))} disabled={currentPage === totalPages} className="px-5 py-3 bg-slate-800 disabled:opacity-30 rounded-xl text-white font-bold border border-slate-700 hover:border-emerald-500 transition shadow-lg">Next →</button>
-              </div>
-            )}
+              ))}
+              {chatMessages.length === 1 && !chatLoading && (
+                <div className="flex flex-col gap-2 mt-2">
+                  {BONNIE_QUICK_PROMPTS.map((prompt, i) => <button key={i} onClick={() => sendChatMessage(prompt, false)} className="bg-slate-800 hover:bg-emerald-900/50 border border-slate-700 text-slate-300 text-left p-2.5 rounded-xl transition text-[10px]">{prompt}</button>)}
+                </div>
+              )}
+              {chatLoading && <div className="text-slate-400 text-xs p-3">Bonnie is typing...</div>}
+            </div>
+            <form onSubmit={(e) => { e.preventDefault(); sendChatMessage(chatInput, false); }} className="p-3 bg-slate-950 border-t border-slate-800 flex gap-2">
+              <input type="text" value={chatInput} onChange={(e) => setChatInput(e.target.value)} placeholder="Ask Bonnie..." className="flex-1 bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-white text-xs outline-none focus:border-emerald-500" />
+              <button type="submit" disabled={chatLoading} className="bg-emerald-600 text-white font-bold px-3 rounded-xl text-xs">Send</button>
+            </form>
           </div>
         )}
       </div>
+
+      {/* SEARCH FORM */}
+      {showSearchForm && (
+        <div className="flex-1 flex justify-center items-center animate-fadeIn pb-12 mt-4">
+          <div className="w-full max-w-2xl glass p-6 sm:p-10 rounded-3xl shadow-2xl border border-emerald-900/30">
+            <div className="text-center mb-8">
+              <h2 className="text-2xl sm:text-3xl font-black text-white mb-2">Smart Relocation Agent</h2>
+              <p className="text-slate-400 text-sm">Tell Clyde your budget and office location, and he'll compute optimal neighborhoods.</p>
+            </div>
+
+            <div className="flex bg-slate-900 p-1.5 rounded-xl border border-slate-800 mb-6">
+              <button onClick={() => setSearchMode('manual')} className={`flex-1 py-2.5 rounded-lg text-xs font-bold transition ${searchMode === 'manual' ? 'bg-emerald-500 text-slate-950 shadow-md' : 'text-slate-400'}`}>⚙️ Manual Setup</button>
+              <button onClick={() => setSearchMode('ai')} className={`flex-1 py-2.5 rounded-lg text-xs font-bold transition ${searchMode === 'ai' ? 'bg-emerald-500 text-slate-950 shadow-md' : 'text-slate-400'}`}>✨ Ask Clyde Directly</button>
+            </div>
+
+            {searchMode === 'manual' ? (
+              <form onSubmit={triggerManualSearch} className="space-y-6">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
+                  <div>
+                    <label className="block text-[10px] sm:text-xs font-bold text-slate-300 uppercase mb-2">Who is moving?</label>
+                    <select value={moveType} onChange={(e) => setMoveType(e.target.value)} className="w-full bg-slate-900 border border-slate-700 rounded-xl px-4 py-3 text-white text-sm outline-none"><option value="solo">Just Me</option><option value="couple">A Couple</option></select>
+                  </div>
+                  <div>
+                    <label className="block text-[10px] sm:text-xs font-bold text-slate-300 uppercase mb-2">Target Property</label>
+                    <select value={propertyType} onChange={(e) => setPropertyType(e.target.value)} className="w-full bg-slate-900 border border-slate-700 rounded-xl px-4 py-3 text-white text-sm outline-none"><option value="Shared Flatshare / Room">Shared Flatshare / Room</option><option value="Studio Flat">Studio Flat</option><option value="1-Bed Private Flat">1-Bed Private Flat</option><option value="2-Bed Flat">2-Bed Flat</option></select>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
+                  <div>
+                    <div className="flex justify-between mb-2"><label className="text-[10px] font-bold text-slate-300 uppercase">Your Salary</label><span className="text-emerald-400 font-bold text-sm">£{grossSalary.toLocaleString()}</span></div>
+                    <input type="range" min="15000" max="200000" step="1000" value={grossSalary} onChange={(e) => setGrossSalary(Number(e.target.value))} className="w-full accent-emerald-500" />
+                  </div>
+                  <div>
+                    <div className="flex justify-between mb-2"><label className="text-[10px] font-bold text-slate-300 uppercase">Rent Allowance %</label><span className="text-white font-bold text-sm">{budgetSlider}%</span></div>
+                    <input type="range" min="20" max="60" step="5" value={budgetSlider} onChange={(e) => setBudgetSlider(Number(e.target.value))} className="w-full accent-emerald-500" />
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-5 items-end">
+                  <div className="relative">
+                    <label className="block text-[10px] font-bold text-slate-300 uppercase mb-2">Office Destination</label>
+                    <input type="text" required value={officeLocation} onChange={handleLocationType} onFocus={() => setShowSuggestions(true)} placeholder="e.g. Bank, Soho, Canary Wharf" className="w-full bg-slate-900 border border-slate-700 rounded-xl px-4 py-3 text-white text-sm outline-none" />
+                    {showSuggestions && locationSuggestions.length > 0 && (
+                      <ul className="absolute z-50 w-full bg-slate-800 border border-slate-700 rounded-xl mt-1 overflow-hidden shadow-2xl">
+                        {locationSuggestions.map((area, idx) => <li key={idx} onClick={() => selectSuggestion(area)} className="px-4 py-3 text-sm text-white hover:bg-emerald-600 cursor-pointer">{area}, London</li>)}
+                      </ul>
+                    )}
+                  </div>
+                  <div>
+                    <div className="flex justify-between mb-2"><label className="text-[10px] font-bold text-slate-300 uppercase">Days in Office</label><span className="text-blue-400 font-bold text-sm">{officeDays} Days</span></div>
+                    <input type="range" min="1" max="5" step="1" value={officeDays} onChange={(e) => setOfficeDays(Number(e.target.value))} className="w-full accent-blue-500" />
+                  </div>
+                </div>
+
+                <button type="submit" className="w-full bg-emerald-600 hover:bg-emerald-500 text-white font-bold py-4 rounded-xl shadow-xl text-sm transition">Find My Neighborhoods ➔</button>
+              </form>
+            ) : (
+              <form onSubmit={handleAiSubmit} className="space-y-4">
+                <textarea value={aiPromptText} onChange={(e) => setAiPromptText(e.target.value)} placeholder="e.g., I work in Canary Wharf 3 days a week, earn £65k..." className="w-full h-40 bg-slate-900 border border-slate-700 rounded-xl p-4 text-white text-sm outline-none resize-none focus:border-emerald-500" />
+                <button type="submit" className="w-full bg-emerald-600 hover:bg-emerald-500 text-white font-bold py-4 rounded-xl shadow-xl text-sm transition">✨ Ask Clyde</button>
+              </form>
+            )}
+          </div>
+        </div>
+      )}
+
+      {loading && !showSearchForm && (
+        <div className="flex-1 flex items-center justify-center animate-fadeIn py-20">
+          <div className="glass rounded-3xl py-16 px-10 text-center border border-emerald-500/30 max-w-lg w-full shadow-2xl">
+            <div className="w-12 h-12 border-4 border-emerald-500 border-t-transparent rounded-full animate-spin mx-auto mb-6"></div>
+            <h2 className="text-xl font-bold text-white mb-1">Clyde is curating suggestions for you</h2>
+            <p className="text-slate-400 text-xs">It usually takes about 15 seconds</p>
+          </div>
+        </div>
+      )}
+
+      {!showSearchForm && !loading && (
+        <div className="flex-1 animate-fadeIn w-full max-w-5xl mx-auto space-y-6">
+          <div className="flex justify-between items-center bg-slate-900 border border-slate-700 p-4 rounded-2xl shadow-md">
+            <div>
+              <span className="block text-[10px] text-slate-400 uppercase font-bold">Target Destination</span>
+              <strong className="text-white text-sm sm:text-base">{activeDestination}</strong>
+            </div>
+            <button onClick={() => setShowSearchForm(true)} className="bg-slate-800 hover:bg-slate-700 border border-slate-600 text-white text-xs font-bold py-2 px-4 rounded-lg transition">⚙️ Modify Search</button>
+          </div>
+
+          {currentItems.map((hub, idx) => {
+            const queryDays = searchParams.get('days');
+            const daysNum = queryDays ? Number(queryDays) : 3;
+            const singleFareStr = String(hub.Single_Fare_Cost).replace(/[^0-9.]/g, '');
+            const singleFare = parseFloat(singleFareStr) || 0;
+            const monthlyFareTotal = Math.round(singleFare * 2 * daysNum * 4.33);
+            
+            let avgRent = 1500;
+            if (hub.Rent_Lower_Bound && hub.Rent_Upper_Bound) avgRent = Math.round((Number(hub.Rent_Lower_Bound) + Number(hub.Rent_Upper_Bound)) / 2);
+            
+            const fiveWeekDeposit = Math.round((avgRent * 12) / 52 * 5);
+            let upfrontCash = avgRent + fiveWeekDeposit;
+            if (!isUKCreditActive) upfrontCash = (avgRent * 6) + fiveWeekDeposit;
+
+            const isSaved = savedNeighborhoods.includes(hub.Neighborhood);
+            const isShared = searchParams.get('type') === 'Shared Flatshare / Room' || propertyType === 'Shared Flatshare / Room';
+
+            return (
+              <div key={idx} className="glass rounded-3xl p-5 sm:p-6 md:p-8 shadow-2xl border border-slate-700/40 hover:border-emerald-500/40 transition relative">
+                
+                <div className="flex justify-between items-start mb-4">
+                  <div><h3 className="text-xl sm:text-2xl font-black text-white">{hub.Neighborhood} <span className="text-xs font-normal text-slate-400">({hub.Station_Outcode})</span></h3></div>
+                  <div className="bg-slate-950 border border-emerald-500/30 rounded-xl px-4 py-2 text-center ml-2 relative">
+                    <div className="flex justify-center items-center gap-1 mb-0.5">
+                      <span className="block text-[9px] text-slate-400 uppercase font-bold">Match Score</span>
+                      <button onClick={() => toggleTooltip(`score-${idx}`)} className="text-slate-500 hover:text-white text-[10px]">ⓘ</button>
+                    </div>
+                    <span className="text-xl font-black text-emerald-400">{hub.Suggestion_Score}</span>
+                    {activeTooltip === `score-${idx}` && (
+                      <div className="absolute top-full right-0 mt-2 w-48 bg-slate-800 border border-emerald-500 p-3 rounded-xl text-xs z-50 text-slate-200 shadow-2xl text-left">
+                        <strong>Calculation Engine:</strong> Ranked by commute speed, transit convenience, safety rating, and budget headroom.
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                <NeighborhoodMap lat={hub.Latitude} lng={hub.Longitude} neighborhood={hub.Neighborhood} targetDestination={activeDestination} />
+
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-5">
+                  <div className="bg-slate-950 p-3.5 rounded-xl border border-slate-800 relative">
+                    <div className="flex justify-between items-center mb-0.5"><span className="text-[10px] text-slate-400 uppercase font-bold">Rent Allocation</span></div>
+                    <span className="text-emerald-400 font-bold text-sm block">{hub.Rent_Range}</span>
+                  </div>
+                  <div className="bg-slate-950 p-3.5 rounded-xl border border-slate-800 relative">
+                    <div className="flex justify-between items-center mb-0.5">
+                      <span className="text-[10px] text-slate-400 uppercase font-bold">Commute</span>
+                      <button onClick={() => toggleTooltip(`commute-${idx}`)} className="text-slate-500 hover:text-white text-[10px]">ⓘ</button>
+                    </div>
+                    <span className="text-white font-bold text-sm block">{hub.Commute_Duration} Mins</span>
+                    {activeTooltip === `commute-${idx}` && (
+                      <div className="absolute top-full left-0 mt-2 w-56 bg-slate-800 border border-emerald-500 p-3 rounded-xl text-xs z-50 text-slate-200 shadow-2xl">
+                        <strong>Line Route:</strong> {hub.Journey_Breakdown}
+                      </div>
+                    )}
+                  </div>
+                  <div className="bg-slate-950 p-3.5 rounded-xl border border-slate-800 relative">
+                    <div className="flex justify-between items-center mb-0.5">
+                      <span className="text-[10px] text-slate-400 uppercase font-bold">TfL Cost / Mo</span>
+                      <button onClick={() => toggleTooltip(`tfl-${idx}`)} className="text-slate-500 hover:text-white text-[10px]">ⓘ</button>
+                    </div>
+                    <span className="text-blue-400 font-bold text-sm block">£{monthlyFareTotal}</span>
+                    {activeTooltip === `tfl-${idx}` && (
+                      <div className="absolute top-full right-0 lg:left-0 mt-2 w-64 bg-slate-800 border border-blue-500 p-3 rounded-xl text-xs z-50 text-slate-200 shadow-2xl">
+                        <strong>Monthly Calculation:</strong> Peak Single Fare (£{singleFare.toFixed(2)}) × 2 (Return Trip) × {daysNum} Days/Week × 4.33 Weeks/Month = £{monthlyFareTotal}/mo.
+                      </div>
+                    )}
+                  </div>
+                  <div className="bg-slate-950 p-3.5 rounded-xl border border-slate-800 relative">
+                    <div className="flex justify-between items-center mb-0.5">
+                      <span className="text-[10px] text-slate-400 uppercase font-bold">Safety Score</span>
+                      <button onClick={() => toggleTooltip(`safety-${idx}`)} className="text-slate-500 hover:text-white text-[10px]">ⓘ</button>
+                    </div>
+                    <span className="text-amber-400 font-bold text-sm block">{hub.Safety_Score}/100</span>
+                    {activeTooltip === `safety-${idx}` && (
+                      <div className="absolute top-full right-0 mt-2 w-48 bg-slate-800 border border-amber-500 p-3 rounded-xl text-xs z-50 text-slate-200 shadow-2xl">
+                        <strong>Data Source:</strong> Verified against Metropolitan Police crime density reports.
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-5">
+                  <div className="bg-slate-900/60 p-4 rounded-xl border border-slate-800/80 space-y-3 text-xs text-slate-300">
+                    <h4 className="text-[10px] font-bold text-blue-400 uppercase tracking-widest mb-1">📸 Local Lifestyle Profile</h4>
+                    <div><strong className="text-slate-100 block mb-0.5">🎭 Vibe:</strong> {hub.Vibe}</div>
+                    <div><strong className="text-slate-100 block mb-0.5">📍 Famous Spots:</strong> <span className="text-emerald-400 font-medium">{hub.Famous_Spots}</span></div>
+                    <div><strong className="text-slate-100 block mb-0.5">🛒 Groceries:</strong> {hub.Supermarkets}</div>
+                    <div><strong className="text-slate-100 block mb-0.5">💪 Gyms & Fitness:</strong> {hub.Gyms || 'PureGym, Gymbox, local council leisure center'}</div>
+                    <div><strong className="text-slate-100 block mb-0.5">🚇 Connectivity:</strong> {hub.Connectivity}</div>
+                  </div>
+
+                  <div className={`bg-slate-900/60 p-4 rounded-xl border ${!isUKCreditActive ? 'border-amber-500/50' : 'border-slate-800/80'}`}>
+                    <h4 className={`text-[10px] font-bold uppercase tracking-widest mb-3 ${!isUKCreditActive ? 'text-amber-500' : 'text-emerald-500'}`}>💷 Upfront Move-In Cash Needed</h4>
+                    <div className="space-y-2 text-xs">
+                      <div className="flex justify-between items-center text-slate-400"><span>{!isUKCreditActive ? '6 Months Rent (Avg)' : '1st Month Rent (Avg)'}</span><span className="text-white">£{!isUKCreditActive ? (avgRent * 6).toLocaleString() : avgRent.toLocaleString()}</span></div>
+                      <div className="flex justify-between items-center text-slate-400"><span>5-Week Deposit</span><span className="text-white">£{fiveWeekDeposit.toLocaleString()}</span></div>
+                      <div className="h-px bg-slate-800 my-2"></div>
+                      <div className="flex justify-between font-bold text-slate-100 text-sm"><span>Total Cash Needed:</span><span className={!isUKCreditActive ? "text-amber-400" : "text-emerald-400"}>£{upfrontCash.toLocaleString()}</span></div>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="bg-slate-950/80 p-4 rounded-xl border border-slate-800 mb-6 text-xs text-slate-300">
+                  <span className="text-[10px] font-bold text-emerald-400 uppercase block mb-1">Did you know?</span>
+                  <p className="font-medium">{hub.Fun_Fact}</p>
+                </div>
+
+                <div className="flex flex-col sm:flex-row gap-2.5 sm:gap-3">
+                  <button onClick={() => setListingsModal({ isOpen: true, neighborhood: hub.Neighborhood, isShared: isShared })} className="flex-1 bg-emerald-600 hover:bg-emerald-500 text-white font-bold py-3 px-4 rounded-xl text-xs transition shadow-lg flex items-center justify-center gap-1.5"><span>🏘️</span> Suggested Listings</button>
+                  <button onClick={() => handleSaveSuggestion(hub)} className={`flex-1 ${isSaved ? 'bg-slate-800 text-emerald-400 border border-emerald-500/50' : 'bg-slate-800 hover:bg-slate-700 text-white'} font-bold py-3 px-4 rounded-xl text-xs transition shadow-lg flex items-center justify-center gap-1.5 border border-slate-700`}><span>{isSaved ? '✅' : '🔖'}</span> {isSaved ? 'Saved to Profile' : 'Save Suggestion'}</button>
+                  <a href={`https://www.google.com/maps/dir/?api=1&origin=${hub.Latitude},${hub.Longitude}&destination=${encodeURIComponent(activeDestination)}&travelmode=transit`} target="_blank" rel="noreferrer" className="flex-1 bg-blue-600 hover:bg-blue-500 text-white font-bold py-3 px-4 rounded-xl text-center text-xs transition shadow-lg flex items-center justify-center gap-1.5">🗺️ Maps Route</a>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
     </div>
   );
 }

@@ -1,163 +1,166 @@
 import React, { useState, useEffect } from 'react';
-import { useLocation, useNavigate } from 'react-router-dom';
+import { useNavigate, Link, useLocation } from 'react-router-dom';
 import { supabase } from '../supabaseClient';
 import AlertModal from '../components/AlertModal';
 
 export default function ProfileHub({ session }) {
-  const location = useLocation();
   const navigate = useNavigate();
+  const location = useLocation();
 
-  let currentSub = 'basic';
-  if (location.pathname.includes('/saved')) currentSub = 'saved';
-  if (location.pathname.includes('/security')) currentSub = 'security';
-
-  const [fullName, setFullName] = useState('');
-  const [pronouns, setPronouns] = useState('');
-  const [contactNumber, setContactNumber] = useState('');
-  const [dob, setDob] = useState('');
-  const [company, setCompany] = useState('');
-  const [area, setArea] = useState('');
-  const [avatarUrl, setAvatarUrl] = useState(null);
-  
-  const [savedProps, setSavedProps] = useState([]);
-  const [newPassword, setNewPassword] = useState('');
-  const [showPassword, setShowPassword] = useState(false);
-  const [loading, setLoading] = useState(false);
-  const [uploadingAvatar, setUploadingAvatar] = useState(false);
-
+  const [loading, setLoading] = useState(true);
   const [alertConfig, setAlertConfig] = useState({ isOpen: false, title: '', message: '', type: 'success' });
-  const showAlert = (title, message, type) => setAlertConfig({ isOpen: true, title, message, type });
+  const showAlert = (title, message, type = 'success') => setAlertConfig({ isOpen: true, title, message, type });
+
+  const [firstName, setFirstName] = useState('');
+  const [lastName, setLastName] = useState('');
+  const [age, setAge] = useState('');
+  const [company, setCompany] = useState('');
+  const [avatarUrl, setAvatarUrl] = useState('');
+  const [uploading, setUploading] = useState(false);
+
+  const [savedItems, setSavedItems] = useState([]);
+  const [expandedItemId, setExpandedItemId] = useState(null);
+
+  const currentTab = location.pathname.split('/')[2] || 'basic';
 
   useEffect(() => {
-    document.title = "KeelEngine | Profile Hub";
-    async function loadProfileData() {
-      if (!session?.user) return;
-      const { data: profile } = await supabase.from('profiles').select('*').eq('id', session.user.id).single();
-      if (profile) {
-        setFullName(profile.full_name || '');
-        setPronouns(profile.pronouns || '');
-        setContactNumber(profile.contact_number || '');
-        setDob(profile.dob || '');
-        setCompany(profile.company_name || '');
-        setArea(profile.favorite_area || '');
-        setAvatarUrl(profile.avatar_url || null);
-      }
-      const { data: props } = await supabase.from('saved_properties').select('*').eq('user_id', session.user.id);
-      if (props) setSavedProps(props);
+    if (session?.user?.id) {
+      loadUserProfile();
+      loadSavedItems();
     }
-    loadProfileData();
   }, [session]);
 
-  const uploadAvatar = async (event) => {
+  const loadUserProfile = async () => {
     try {
-      setUploadingAvatar(true);
-      const file = event.target.files[0];
-      const fileName = `${session.user.id}-${Math.random()}.${file.name.split('.').pop()}`;
-      await supabase.storage.from('avatars').upload(fileName, file);
-      const { data } = supabase.storage.from('avatars').getPublicUrl(fileName);
-      await supabase.from('profiles').update({ avatar_url: data.publicUrl }).eq('id', session.user.id);
-      setAvatarUrl(data.publicUrl);
-    } catch (e) { showAlert('Error', e.message, 'error'); } finally { setUploadingAvatar(false); }
+      const { data } = await supabase.from('profiles').select('*').eq('id', session.user.id).single();
+      if (data) {
+        setFirstName(data.first_name || ''); setLastName(data.last_name || '');
+        setAge(data.age || ''); setCompany(data.company || ''); setAvatarUrl(data.avatar_url || '');
+      }
+    } catch (e) {} finally { setLoading(false); }
   };
 
-  const saveBasicDetails = async () => {
-    setLoading(true);
-    const updates = { full_name: fullName, pronouns, contact_number: contactNumber, dob, company_name: company, favorite_area: area };
-    const { error } = await supabase.from('profiles').update(updates).eq('id', session.user.id);
-    setLoading(false);
-    if (error) showAlert('Error', error.message, 'error'); else showAlert('Success', 'Your profile details have been saved!', 'success');
-  };
-
-  const removeProperty = async (id) => {
+  const loadSavedItems = async () => {
     try {
-      await supabase.from('saved_properties').delete().eq('id', id);
-      setSavedProps(prev => prev.filter(p => p.id !== id));
-      showAlert('Removed', 'Neighborhood removed from your list.', 'success');
-    } catch (e) {
-      showAlert('Error', 'Could not remove property.', 'error');
-    }
+      const { data } = await supabase.from('saved_suggestions').select('*').eq('user_id', session.user.id).order('created_at', { ascending: false });
+      if (data) setSavedItems(data);
+    } catch (e) {}
   };
 
-  const updateSecurityPassword = async () => {
-    if (!newPassword.trim()) return;
+  const handleProfileSave = async (e) => {
+    e.preventDefault();
     setLoading(true);
-    const { error } = await supabase.auth.updateUser({ password: newPassword });
-    setLoading(false);
-    if (error) showAlert('Error', error.message, 'error');
-    else { showAlert('Secured', 'Your password was updated successfully.', 'success'); setNewPassword(''); }
+    try {
+      const { error } = await supabase.from('profiles').upsert({ id: session.user.id, first_name: firstName, last_name: lastName, age: age ? Number(age) : null, company, avatar_url: avatarUrl, updated_at: new Date() });
+      if (error) throw error;
+      showAlert("Profile Updated", "Your profile details have been saved successfully.", "success");
+    } catch (e) { showAlert("Update Failed", e.message, "error"); } finally { setLoading(false); }
   };
+
+  const handleAvatarUpload = async (e) => {
+    try {
+      setUploading(true);
+      if (!e.target.files || e.target.files.length === 0) return;
+      const file = e.target.files[0];
+      const filePath = `${session.user.id}/${Math.random()}.${file.name.split('.').pop()}`;
+      const { error } = await supabase.storage.from('avatars').upload(filePath, file);
+      if (error) throw error;
+      const { data: { publicUrl } } = supabase.storage.from('avatars').getPublicUrl(filePath);
+      setAvatarUrl(publicUrl);
+      showAlert("Picture Uploaded", "Don't forget to click 'Save Profile Changes'.", "success");
+    } catch (e) { showAlert("Upload Error", e.message, "error"); } finally { setUploading(false); }
+  };
+
+  const handleRemoveSaved = async (id) => {
+    try {
+      await supabase.from('saved_suggestions').delete().eq('id', id);
+      setSavedItems(savedItems.filter(item => item.id !== id));
+      showAlert("Removed", "Neighborhood removed.", "success");
+    } catch (e) {}
+  };
+
+  const handleSignOut = async () => { await supabase.auth.signOut(); navigate('/'); };
 
   return (
-    <div className="max-w-4xl mx-auto px-4 py-12">
+    <div className="max-w-6xl mx-auto px-4 py-8 animate-fadeIn">
       <AlertModal {...alertConfig} onClose={() => setAlertConfig({ ...alertConfig, isOpen: false })} />
-      <div className="glass p-10 rounded-3xl shadow-2xl border border-emerald-900/50">
+      <div className="glass rounded-3xl border border-slate-700/50 p-6 sm:p-8 shadow-2xl">
         
-        <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-8 border-b border-slate-700 pb-6 gap-6">
-          <div className="flex items-center gap-6">
-            <div className="relative group">
-              <div className="w-20 h-20 rounded-full border-2 border-emerald-500 overflow-hidden bg-slate-800 flex items-center justify-center">
-                {avatarUrl ? <img src={avatarUrl} className="w-full h-full object-cover" /> : <span className="text-3xl">👤</span>}
-              </div>
-              <label className="absolute inset-0 bg-black/60 rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 cursor-pointer transition">
-                <span className="text-[10px] text-white font-bold uppercase">{uploadingAvatar ? '...' : 'Upload'}</span>
-                <input type="file" accept="image/*" onChange={uploadAvatar} disabled={uploadingAvatar} className="hidden" />
-              </label>
-            </div>
-            <div>
-              <h2 className="text-3xl font-bold text-white tracking-tight">My Profile</h2>
-              <p className="text-emerald-400 font-mono text-sm mt-1">{session?.user?.email}</p>
-            </div>
+        <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 pb-6 border-b border-slate-800 mb-8">
+          <div><h2 className="text-2xl sm:text-3xl font-black text-white">Account Profile</h2></div>
+          <div className="flex flex-wrap gap-2 bg-slate-950 p-1.5 rounded-2xl border border-slate-800 w-full md:w-auto">
+            <Link to="/profile/basic" className={`px-4 py-2 rounded-xl text-xs font-bold transition flex items-center gap-2 ${currentTab === 'basic' ? 'bg-emerald-600 text-white' : 'text-slate-400 hover:text-white'}`}>👤 Basic Details</Link>
+            <Link to="/profile/saved" className={`px-4 py-2 rounded-xl text-xs font-bold transition flex items-center gap-2 ${currentTab === 'saved' ? 'bg-emerald-600 text-white' : 'text-slate-400 hover:text-white'}`}>🔖 Saved ({savedItems.length})</Link>
+            <Link to="/profile/signout" className={`px-4 py-2 rounded-xl text-xs font-bold transition flex items-center gap-2 ${currentTab === 'signout' ? 'bg-red-600 text-white' : 'text-slate-400 hover:text-red-400'}`}>🚪 Sign Out</Link>
           </div>
-          <button onClick={() => supabase.auth.signOut()} className="bg-red-500/10 text-red-400 border border-red-500/30 hover:bg-red-500/30 px-4 py-2 rounded-lg text-sm font-bold transition">Sign Out</button>
-        </div>
-        
-        <div className="flex flex-wrap gap-4 mb-8">
-          <button onClick={() => navigate('/profile/basic')} className={`px-4 py-2 rounded-lg text-sm font-bold transition ${currentSub === 'basic' ? 'bg-emerald-600 text-white shadow-md' : 'bg-slate-800 border border-slate-700 text-slate-400 hover:text-white'}`}>Basic Details</button>
-          <button onClick={() => navigate('/profile/saved')} className={`px-4 py-2 rounded-lg text-sm font-bold transition ${currentSub === 'saved' ? 'bg-emerald-600 text-white shadow-md' : 'bg-slate-800 border border-slate-700 text-slate-400 hover:text-white'}`}>Saved Properties ({savedProps.length})</button>
-          <button onClick={() => navigate('/profile/security')} className={`px-4 py-2 rounded-lg text-sm font-bold transition ${currentSub === 'security' ? 'bg-emerald-600 text-white shadow-md' : 'bg-slate-800 border border-slate-700 text-slate-400 hover:text-white'}`}>Security</button>
         </div>
 
-        {currentSub === 'basic' && (
-          <div className="space-y-6">
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              <div><label className="block text-sm text-slate-300 mb-2">Full Name</label><input type="text" value={fullName} onChange={(e) => setFullName(e.target.value)} className="w-full bg-slate-900/50 border border-slate-700/50 rounded-xl px-4 py-3 text-white outline-none focus:border-emerald-500" /></div>
-              <div><label className="block text-sm text-slate-300 mb-2">Pronouns</label><input type="text" value={pronouns} onChange={(e) => setPronouns(e.target.value)} placeholder="e.g. He/Him, They/Them" className="w-full bg-slate-900/50 border border-slate-700/50 rounded-xl px-4 py-3 text-white outline-none focus:border-emerald-500" /></div>
-              <div><label className="block text-sm text-slate-300 mb-2">Contact Number</label><input type="tel" value={contactNumber} onChange={(e) => setContactNumber(e.target.value)} className="w-full bg-slate-900/50 border border-slate-700/50 rounded-xl px-4 py-3 text-white outline-none focus:border-emerald-500" /></div>
-              <div><label className="block text-sm text-slate-300 mb-2">Date of Birth</label><input type="date" value={dob} onChange={(e) => setDob(e.target.value)} className="w-full bg-slate-900/50 border border-slate-700/50 rounded-xl px-4 py-3 text-white outline-none focus:border-emerald-500" /></div>
-            </div>
-            <button onClick={saveBasicDetails} disabled={loading} className="bg-emerald-600 hover:bg-emerald-500 text-white font-bold px-6 py-3 rounded-xl transition">{loading ? 'Saving...' : 'Save Details'}</button>
-          </div>
-        )}
-
-        {currentSub === 'saved' && (
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            {savedProps.map((hub, idx) => (
-              <div key={idx} className="bg-slate-900/40 p-5 rounded-2xl border border-slate-800 flex justify-between items-center group relative">
-                <div>
-                  <h4 className="font-bold text-white text-lg">{hub.neighborhood}</h4>
-                  <p className="text-xs text-emerald-400 mt-1">Cost: {hub.rent_range}</p>
-                </div>
-                <div className="flex items-center gap-4">
-                  <strong className="text-emerald-400 text-xl font-black">{hub.suggestion_score}</strong>
-                  <button onClick={() => removeProperty(hub.id)} className="bg-red-500/10 text-red-400 hover:bg-red-500 hover:text-white p-2 rounded-lg transition" title="Remove">🗑️</button>
-                </div>
+        {currentTab === 'basic' && (
+          <form onSubmit={handleProfileSave} className="space-y-6 max-w-2xl">
+            <div className="flex items-center gap-6 bg-slate-950 p-5 rounded-2xl border border-slate-800">
+              <div className="w-20 h-20 sm:w-24 sm:h-24 rounded-full bg-slate-800 border-2 border-emerald-500 overflow-hidden flex items-center justify-center relative shrink-0">
+                {avatarUrl ? <img src={avatarUrl} alt="Profile" className="w-full h-full object-cover" /> : <span className="text-3xl">👤</span>}
               </div>
-            ))}
-            {savedProps.length === 0 && <p className="text-slate-500 col-span-2 text-center py-10">No properties saved yet.</p>}
-          </div>
-        )}
-
-        {currentSub === 'security' && (
-          <div className="space-y-6">
-            <div className="relative max-w-md">
-              <label className="block text-sm text-slate-300 mb-2">New Password</label>
-              <input type={showPassword ? "text" : "password"} value={newPassword} onChange={(e) => setNewPassword(e.target.value)} className="w-full bg-slate-900/50 border border-slate-700/50 rounded-xl px-4 py-3 pr-12 text-white outline-none" />
-              <button type="button" onClick={() => setShowPassword(!showPassword)} className="absolute right-4 top-10 text-xl opacity-70 hover:opacity-100 transition">{showPassword ? "🙈" : "👁️"}</button>
+              <div>
+                <label className="block text-xs font-bold text-white mb-1">Profile Picture</label>
+                <input type="file" accept="image/*" onChange={handleAvatarUpload} disabled={uploading} className="text-xs text-slate-400 file:mr-3 file:py-2 file:px-4 file:rounded-xl file:border-0 file:text-xs file:font-bold file:bg-emerald-600 file:text-white hover:file:bg-emerald-500 cursor-pointer" />
+              </div>
             </div>
-            <button onClick={updateSecurityPassword} disabled={loading} className="bg-blue-600 hover:bg-blue-500 text-white font-bold px-6 py-3 rounded-xl transition">Update Password</button>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
+              <div><label className="block text-xs font-bold text-slate-300 uppercase mb-2">First Name</label><input type="text" required value={firstName} onChange={(e) => setFirstName(e.target.value)} className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-3 text-white text-sm outline-none" /></div>
+              <div><label className="block text-xs font-bold text-slate-300 uppercase mb-2">Last Name</label><input type="text" required value={lastName} onChange={(e) => setLastName(e.target.value)} className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-3 text-white text-sm outline-none" /></div>
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
+              <div><label className="block text-xs font-bold text-slate-300 uppercase mb-2">Age</label><input type="number" value={age} onChange={(e) => setAge(e.target.value)} className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-3 text-white text-sm outline-none" /></div>
+              <div><label className="block text-xs font-bold text-slate-300 uppercase mb-2">Company / Employer</label><input type="text" value={company} onChange={(e) => setCompany(e.target.value)} className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-3 text-white text-sm outline-none" /></div>
+            </div>
+            <button type="submit" disabled={loading} className="bg-emerald-600 hover:bg-emerald-500 text-white font-bold py-3.5 px-6 rounded-xl text-xs transition shadow-lg">Save Profile Changes</button>
+          </form>
+        )}
+
+        {currentTab === 'saved' && (
+          <div className="space-y-4">
+            <h3 className="text-lg font-bold text-white mb-4">Saved Locations ({savedItems.length})</h3>
+            {savedItems.map((item) => {
+              const isExpanded = expandedItemId === item.id;
+              const details = item.details || {};
+              return (
+                <div key={item.id} className="bg-slate-950 border border-slate-800 rounded-2xl overflow-hidden transition">
+                  <div className="p-5 flex justify-between items-center cursor-pointer hover:bg-slate-900/50" onClick={() => setExpandedItemId(isExpanded ? null : item.id)}>
+                    <div>
+                      <h4 className="text-lg font-bold text-white">{item.neighborhood}</h4>
+                      <p className="text-xs text-slate-400 mt-0.5">Commute to: <strong className="text-slate-200">{item.destination}</strong> • {item.rent_range} • {item.commute_duration} Mins</p>
+                    </div>
+                    <div className="flex items-center gap-3">
+                      <button onClick={(e) => { e.stopPropagation(); handleRemoveSaved(item.id); }} className="text-xs text-red-400 hover:bg-red-500/10 border border-red-500/30 px-3 py-1.5 rounded-lg transition">Delete</button>
+                      <span className="text-emerald-400 font-bold text-xs">{isExpanded ? '▲ Hide' : '▼ View'}</span>
+                    </div>
+                  </div>
+                  {isExpanded && (
+                    <div className="p-5 border-t border-slate-800 bg-slate-900/40 text-xs space-y-4">
+                      <div className="bg-slate-900 p-3.5 rounded-xl border border-slate-800">
+                        <strong className="text-emerald-400 block mb-1">Did You Know?</strong>
+                        <p className="text-slate-300">{details.Fun_Fact}</p>
+                      </div>
+                      <a href={`https://www.google.com/maps/dir/?api=1&origin=${details.Latitude},${details.Longitude}&destination=${encodeURIComponent(item.destination)}&travelmode=transit`} target="_blank" rel="noreferrer" className="inline-block bg-blue-600 text-white font-bold px-4 py-2 rounded-xl text-xs transition">View Maps Route ➔</a>
+                    </div>
+                  )}
+                </div>
+              );
+            })}
           </div>
         )}
 
+        {currentTab === 'signout' && (
+          <div className="max-w-md py-8 text-center space-y-4">
+            <div className="w-16 h-16 bg-red-500/10 border border-red-500/30 rounded-full flex items-center justify-center mx-auto text-2xl">🚪</div>
+            <h3 className="text-xl font-bold text-white">Sign Out of KeelEngine?</h3>
+            <div className="pt-4 flex gap-3">
+              <button onClick={handleSignOut} className="flex-1 bg-red-600 hover:bg-red-500 text-white font-bold py-3.5 rounded-xl text-xs transition">Confirm Sign Out</button>
+              <button onClick={() => navigate('/profile/basic')} className="flex-1 bg-slate-800 text-slate-300 font-bold py-3.5 rounded-xl text-xs transition">Cancel</button>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );

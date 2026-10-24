@@ -1,91 +1,90 @@
-from fastapi import FastAPI, HTTPException, Header
+import os
+from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel
-from typing import Optional
-from supabase import create_client, Client
-from data_models import fetch_convenient_commuter_hubs
+from pydantic import BaseModel, Field
+from openai import OpenAI
+import httpx
 
-app = FastAPI(title="KeelEngine Pro", version="10.0")
-
+app = FastAPI(title="KeelEngine Agentic Backend")
 app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_credentials=True, allow_methods=["*"], allow_headers=["*"])
 
-SUPABASE_URL = "https://lsokajyrqpodytvtpczt.supabase.co"
-SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imxzb2thanlycXBvZHl0dnRwY3p0Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODM1Mjk4MzYsImV4cCI6MjA5OTEwNTgzNn0.xgks23X8C2eRExANCMu51PWfxZ7wxfwwHhG44a_66Kw"
-supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
+client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+TAVILY_KEY = os.getenv("TAVILY_API_KEY")
 
 class ComputePayload(BaseModel):
     postcode: str
     days_per_week: int
     property_type: str
-    total_budget: float  
+    total_budget: float
 
-class AuthRequest(BaseModel):
-    email: str
-    password: str
+# 🧠 1. STRICT PYDANTIC SCHEMA: Forces OpenAI to return perfect JSON arrays
+class Hub(BaseModel):
+    Neighborhood: str = Field(description="Name of the London neighborhood")
+    Station_Outcode: str = Field(description="Outward postcode, e.g. E16")
+    Borough: str = Field(description="London Borough")
+    Rent_Range: str = Field(description="Current estimated rent range, e.g. '£1,400 - £1,600'")
+    Commute_Duration: int = Field(description="Estimated commute duration in minutes")
+    Line_Route: str = Field(description="Primary tube/train route used")
+    Single_Fare_Cost: float = Field(description="TfL peak single fare in GBP")
+    Council_Tax_Band_D_Base: int = Field(description="Estimated Council Tax Band D annual cost")
+    Nearest_Grocery: str = Field(description="A prominent grocery store brand nearby")
+    Nearest_Pub: str = Field(description="A popular local pub")
+    Safety_Score: int = Field(description="Safety rating from 1-100 based on London crime stats")
+    Suggestion_Score: int = Field(description="Overall match score from 1-100")
+    AI_Verdict: str = Field(description="2 sentence narrative on why this matches the user's constraints")
 
-class ProfileUpdate(BaseModel):
-    company_name: Optional[str] = None
-    favorite_area: Optional[str] = None
-    move_type: Optional[str] = None
-    gross_salary: Optional[float] = None
-    partner_salary: Optional[float] = None
-    rent_split_user: Optional[float] = None
-    budget_percent: Optional[float] = None
-    office_postcode: Optional[str] = None
-    full_name: Optional[str] = None
-    pronouns: Optional[str] = None
-    contact_number: Optional[str] = None
-    dob: Optional[str] = None
-
-class SaveProperty(BaseModel):
-    neighborhood: str
-    outcode: str
-    rent_range: str
-    suggestion_score: float
-
-@app.post("/api/auth/signup")
-def sign_up(request: AuthRequest):
-    try:
-        res = supabase.auth.sign_up({"email": request.email, "password": request.password})
-        if res.user:
-            supabase.table("profiles").insert({"id": res.user.id, "email": request.email}).execute()
-            return {"message": "Account created successfully!", "user": res.user.email}
-    except Exception as e: raise HTTPException(status_code=400, detail=str(e))
-
-@app.post("/api/auth/login")
-def log_in(request: AuthRequest):
-    try:
-        res = supabase.auth.signInWithPassword({"email": request.email, "password": request.password})
-        return {"access_token": res.session.access_token, "user": res.user.email}
-    except Exception as e: raise HTTPException(status_code=400, detail="Invalid email or password.")
-
-@app.post("/api/profile/update")
-def update_profile(profile: ProfileUpdate, authorization: str = Header(...)):
-    token = authorization.split(" ")[1]
-    user = supabase.auth.get_user(token).user
-    supabase.table("profiles").update(profile.dict(exclude_none=True)).eq("id", user.id).execute()
-    return {"message": "Profile synced!"}
-
-@app.post("/api/properties/save")
-def save_property(prop: SaveProperty, authorization: str = Header(...)):
-    token = authorization.split(" ")[1]
-    user = supabase.auth.get_user(token).user
-    data = prop.dict()
-    data["user_id"] = user.id
-    supabase.table("saved_properties").insert(data).execute()
-    return {"message": "Neighborhood saved!"}
+class AgenticSearchResponse(BaseModel):
+    hubs: list[Hub]
 
 @app.post("/api/compute")
 async def compute_matrix(payload: ComputePayload):
-    results = fetch_convenient_commuter_hubs(payload.postcode, payload.property_type, payload.total_budget)
+    prompt = f"""
+    The user works near {payload.postcode} and commutes {payload.days_per_week} days a week.
+    They want a {payload.property_type} with a strict total monthly budget (rent + TfL fare) of £{payload.total_budget}.
+    Identify 4 realistic London neighborhoods that fit this criteria. 
+    Calculate realistic TfL peak fares and realistic rent data for these areas. Rank them logically.
+    """
     
-    if "error" in results: return {"error": results["error"], "hubs": []}
-    if results.get("is_outside_london"): return {"is_outside_london": True, "message": results["message"], "hubs": []}
-    
-    output_cards = []
-    for row in results["hubs"]:
-        card = dict(row)
-        card["Single_Fare_Formatted"] = f"£{float(row['Single_Fare_Cost']):.2f}"
-        output_cards.append(card)
+    try:
+        # Using OpenAI Structured Outputs to guarantee response format
+        response = client.beta.chat.completions.parse(
+            model="gpt-4o-mini",
+            messages=[
+                {"role": "system", "content": "You are KeelEngine, an expert London real estate AI engine."},
+                {"role": "user", "content": prompt}
+            ],
+            response_format=AgenticSearchResponse
+        )
+        return {"hubs": response.choices[0].message.parsed.model_dump()["hubs"]}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
-    return {"is_outside_london": False, "hubs": output_cards}
+# 🕸️ 2. LIVE WEB FETCHING AGENT (Rightmove / Zoopla)
+@app.post("/api/fetch_live_listings")
+async def fetch_live_listings(req: dict):
+    # Uses Tavily API to bypass scraper blocks and search property portals
+    query = f"site:rightmove.co.uk OR site:zoopla.co.uk {req['property_type']} to rent in {req['neighborhood']} under {req['max_rent']}"
+    try:
+        tavily_url = "https://api.tavily.com/search"
+        payload = {
+            "api_key": TAVILY_KEY,
+            "query": query,
+            "search_depth": "advanced",
+            "include_domains": ["rightmove.co.uk", "zoopla.co.uk", "openrent.co.uk"],
+            "max_results": 5
+        }
+        res = httpx.post(tavily_url, json=payload).json()
+        return {"results": res.get("results", [])}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail="Failed to fetch live internet listings.")
+
+# 📊 3. SENSITIVITY SIMULATOR AGENT
+@app.post("/api/simulate_risk")
+async def simulate_risk(req: dict):
+    prompt = f"Current Rent: £{req['rent']}/mo. Current Transit: £{req['transit']}/mo. Generate a brief 3-year financial projection assuming 4% annual rent hikes and 4.9% TfL fare hikes. Summarize financial sensitivity in 3 bullet points."
+    
+    response = client.chat.completions.create(
+        model="gpt-4o-mini",
+        messages=[{"role": "system", "content": "You are a financial risk AI."}, {"role": "user", "content": prompt}]
+    )
+    return {"simulation_report": response.choices[0].message.content}
