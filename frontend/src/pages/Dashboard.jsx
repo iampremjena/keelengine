@@ -148,8 +148,13 @@ export default function Dashboard({ session }) {
       if (data.reply) { 
         setChatMessages([...updatedMessages, { role: 'assistant', content: data.reply }]); 
         if (isVoice) await playTTS(data.reply); 
+      } else {
+        setChatMessages([...updatedMessages, { role: 'assistant', content: "Backend didn't return a reply. Check server logs." }]);
       }
-    } catch (err) { setChatMessages([...updatedMessages, { role: 'assistant', content: "Connection issue." }]); } finally { setChatLoading(false); }
+    } catch (err) { 
+      console.error(err);
+      setChatMessages([...updatedMessages, { role: 'assistant', content: "Connection issue: Make sure your backend server is running and accessible." }]); 
+    } finally { setChatLoading(false); }
   };
 
   useEffect(() => { if (chatScrollRef.current) chatScrollRef.current.scrollTop = chatScrollRef.current.scrollHeight; }, [chatMessages, isBonnieOpen]);
@@ -203,9 +208,12 @@ export default function Dashboard({ session }) {
         });
         const data = await res.json();
         if (data.error) setErrorMsg(data.error);
-        else if (!data.hubs || data.hubs.length === 0) setErrorMsg(`⚠️ No neighborhoods match.`);
+        else if (!data.hubs || data.hubs.length === 0) setErrorMsg(`⚠️ No neighborhoods match your budget.`);
         else setResults(data.hubs);
-      } catch (err) { setErrorMsg('Connection error.'); } finally { setLoading(false); }
+      } catch (err) { 
+        console.error(err);
+        setErrorMsg('Network Connection Error: Frontend cannot reach the backend server at /api/compute. Check if the server is running.'); 
+      } finally { setLoading(false); }
     };
     runCompute();
   }, [searchParams]);
@@ -213,7 +221,6 @@ export default function Dashboard({ session }) {
   const activeDestination = searchParams.get('destination') || officeLocation;
   const isUKCreditActive = searchParams.get('credit') !== 'false';
   const currentItems = results.slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage);
-  const totalPages = Math.ceil(results.length / itemsPerPage) || 1;
 
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 py-6 sm:py-8 min-h-[85vh] flex flex-col">
@@ -368,6 +375,15 @@ export default function Dashboard({ session }) {
             </div>
             <button onClick={() => setShowSearchForm(true)} className="bg-slate-800 hover:bg-slate-700 border border-slate-600 text-white text-xs font-bold py-2 px-4 rounded-lg transition">⚙️ Modify Search</button>
           </div>
+
+          {/* VISIBLE ERROR BOX - This shows you exactly why the search failed instead of a blank screen */}
+          {errorMsg && (
+            <div className="bg-red-500/10 border border-red-500/50 p-6 rounded-2xl text-center shadow-lg mt-4 mb-8">
+              <span className="text-3xl mb-2 block">⚠️</span>
+              <h3 className="text-red-400 font-bold text-lg mb-1">Search Interrupted</h3>
+              <p className="text-slate-300 text-sm max-w-2xl mx-auto">{errorMsg}</p>
+            </div>
+          )}
 
           {currentItems.map((hub, idx) => {
             const queryDays = searchParams.get('days');

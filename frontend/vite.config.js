@@ -1,39 +1,16 @@
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
-import tailwindcss from '@tailwindcss/vite';
 
 export default defineConfig({
-  plugins: [react(), tailwindcss()],
-  build: {
-    rolldownOptions: {
-      external: [
-        'resend',
-        'openai',
-        'fs',
-        'path',
-        'os',
-        'crypto',
-        'http',
-        'https',
-        'stream',
-        'zlib',
-        'child_process'
-      ]
-    },
-    rollupOptions: {
-      external: [
-        'resend',
-        'openai',
-        'fs',
-        'path',
-        'os',
-        'crypto',
-        'http',
-        'https',
-        'stream',
-        'zlib',
-        'child_process'
-      ]
+  plugins: [react()],
+  server: {
+    port: 5173,
+    proxy: {
+      '/api': {
+        target: 'http://localhost:3001', // WARNING: Change this if your backend runs on a different port (e.g., 5000 or 8000)
+        changeOrigin: true,
+        secure: false
+      }
     }
   }
 });
